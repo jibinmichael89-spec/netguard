@@ -1,0 +1,10 @@
+﻿netguard.db
+*.db
+__pycache__/
+*.pyc
+*.pyo
+.env
+*.log
+venv/
+.vscode/
+Thumbs.db
