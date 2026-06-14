@@ -22,6 +22,17 @@ DB_PATH = os.path.join(PROJECT_ROOT, "netguard.db")
 # How far back to look when reporting "new" devices (hours)
 NEW_DEVICE_WINDOW_HOURS = 24
 
+# Domain category keyword mappings (mirrors dns_monitor.py)
+DOMAIN_CATEGORIES = {
+    "Social media": ("facebook", "instagram", "twitter", "tiktok", "snapchat"),
+    "Streaming": ("netflix", "youtube", "spotify", "disney", "amazon"),
+    "Gaming": ("xbox", "playstation", "steam", "epicgames"),
+    "IoT/Smart home": ("ring", "dreame", "xiaomi", "tuya", "alexa"),
+    "Advertising": ("doubleclick", "googlesyndication", "adnxs", "tracking"),
+    "Apple services": ("apple", "icloud", "itunes"),
+    "Microsoft": ("microsoft", "windows", "azure"),
+}
+
 # ---------------------------------------------------------------------------
 # FastAPI application
 # ---------------------------------------------------------------------------
@@ -63,6 +74,16 @@ def get_db_connection() -> sqlite3.Connection:
 def rows_to_dicts(rows: list[sqlite3.Row]) -> list[dict]:
     """Convert SQLite Row objects to plain Python dictionaries."""
     return [dict(row) for row in rows]
+
+
+def categorize_domain(domain: str) -> str:
+    """Assign a category label to a domain based on keyword matching."""
+    domain_lower = domain.lower()
+    for category, keywords in DOMAIN_CATEGORIES.items():
+        for keyword in keywords:
+            if keyword in domain_lower:
+                return category
+    return "Other"
 
 
 # ---------------------------------------------------------------------------
@@ -164,6 +185,75 @@ def list_alerts() -> dict:
     }
 
 
+@app.get("/dns")
+def list_dns_queries() -> dict:
+    """
+    Return the last 100 DNS queries captured by the DNS monitor.
+
+    Ordered by most recent first.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT * FROM dns_queries
+        ORDER BY id DESC
+        LIMIT 100
+        """
+    )
+    queries = rows_to_dicts(cursor.fetchall())
+    conn.close()
+    return {"count": len(queries), "queries": queries}
+
+
+@app.get("/dns/suspicious")
+def list_suspicious_dns() -> dict:
+    """
+    Return all DNS queries flagged as suspicious.
+
+    Includes the reason each query was flagged.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT * FROM dns_queries
+        WHERE is_suspicious = 1
+        ORDER BY id DESC
+        """
+    )
+    queries = rows_to_dicts(cursor.fetchall())
+    conn.close()
+    return {"count": len(queries), "queries": queries}
+
+
+@app.get("/dns/summary")
+def dns_summary() -> dict:
+    """
+    Return query counts grouped by source device and domain category.
+
+    Aggregates all stored DNS queries into a per-device, per-category summary.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT source_ip, domain FROM dns_queries")
+    rows = cursor.fetchall()
+    conn.close()
+
+    summary: dict[str, dict[str, int]] = {}
+    for row in rows:
+        source_ip = row["source_ip"]
+        category = categorize_domain(row["domain"])
+        if source_ip not in summary:
+            summary[source_ip] = {}
+        summary[source_ip][category] = summary[source_ip].get(category, 0) + 1
+
+    return {
+        "devices": len(summary),
+        "summary": summary,
+    }
+
+
 @app.get("/")
 def root() -> dict:
     """Health check and API overview."""
@@ -173,6 +263,9 @@ def root() -> dict:
             "GET /devices",
             "GET /devices/new",
             "GET /alerts",
+            "GET /dns",
+            "GET /dns/suspicious",
+            "GET /dns/summary",
         ],
     }
 
