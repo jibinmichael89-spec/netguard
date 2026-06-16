@@ -253,19 +253,87 @@ def dns_summary() -> dict:
         "summary": summary,
     }
 
+@app.get("/ports")
+def list_open_ports() -> dict:
+    """
+    Return all open ports for all devices, grouped by device IP.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT * FROM open_ports
+        ORDER BY device_ip, port
+        """
+    )
+    rows = rows_to_dicts(cursor.fetchall())
+    conn.close()
+
+    grouped: dict[str, list[dict]] = {}
+    for row in rows:
+        ip = row["device_ip"]
+        grouped.setdefault(ip, []).append(row)
+
+    return {
+        "devices_scanned": len(grouped),
+        "total_open_ports": len(rows),
+        "results": grouped,
+    }
+
+
+@app.get("/ports/dangerous")
+def list_dangerous_ports() -> dict:
+    """
+    Return only ports flagged as dangerous across all devices.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT * FROM open_ports
+        WHERE is_dangerous = 1
+        ORDER BY device_ip, port
+        """
+    )
+    rows = rows_to_dicts(cursor.fetchall())
+    conn.close()
+    return {"count": len(rows), "dangerous_ports": rows}
+
+
+@app.get("/ports/{device_ip}")
+def list_ports_for_device(device_ip: str) -> dict:
+    """
+    Return open ports for a single device by IP address.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT * FROM open_ports
+        WHERE device_ip = ?
+        ORDER BY port
+        """,
+        (device_ip,),
+    )
+    rows = rows_to_dicts(cursor.fetchall())
+    conn.close()
+    return {"device_ip": device_ip, "count": len(rows), "ports": rows}
 
 @app.get("/")
 def root() -> dict:
     """Health check and API overview."""
     return {
         "service": "NetGuard API",
-        "endpoints": [
+       "endpoints": [
             "GET /devices",
             "GET /devices/new",
             "GET /alerts",
             "GET /dns",
             "GET /dns/suspicious",
             "GET /dns/summary",
+            "GET /ports",
+            "GET /ports/dangerous",
+            "GET /ports/{device_ip}",
         ],
     }
 
