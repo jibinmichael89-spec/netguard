@@ -226,6 +226,32 @@ def list_critical_security_alerts() -> dict:
     return {"count": len(alerts), "alerts": alerts}
 
 
+@app.get("/dhcp/servers")
+def list_dhcp_servers() -> dict:
+    """
+    Return all known DHCP servers observed by the rogue DHCP detector.
+
+    Includes a separate count of untrusted (rogue) servers.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT * FROM dhcp_servers
+        ORDER BY last_seen DESC
+        """
+    )
+    servers = rows_to_dicts(cursor.fetchall())
+    cursor.execute("SELECT COUNT(*) FROM dhcp_servers WHERE is_trusted = 0")
+    untrusted_count = cursor.fetchone()[0]
+    conn.close()
+    return {
+        "count": len(servers),
+        "untrusted_count": untrusted_count,
+        "servers": servers,
+    }
+
+
 @app.get("/dns")
 def list_dns_queries() -> dict:
     """
@@ -371,6 +397,7 @@ def root() -> dict:
             "GET /alerts",
             "GET /alerts/security",
             "GET /alerts/security/critical",
+            "GET /dhcp/servers",
             "GET /dns",
             "GET /dns/suspicious",
             "GET /dns/summary",
