@@ -6,10 +6,21 @@ stored by the ARP scanner in the shared SQLite database.
 
 import os
 import sqlite3
+import sys
 from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
+sys.path.insert(0, os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")), "daemon", "vault"))
+from password_vault import (
+    add_credential,
+    calculate_strength,
+    delete_credential,
+    get_all_credentials,
+    unlock_vault,
+)
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -47,7 +58,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["*"],
     max_age=3600,
@@ -84,6 +95,18 @@ def categorize_domain(domain: str) -> str:
             if keyword in domain_lower:
                 return category
     return "Other"
+
+
+class VaultUnlockRequest(BaseModel):
+    master_password: str
+
+
+class VaultAddRequest(BaseModel):
+    master_password: str
+    device_name: str
+    device_ip: str
+    username: str
+    password: str
 
 
 # ---------------------------------------------------------------------------
@@ -386,6 +409,75 @@ def list_ports_for_device(device_ip: str) -> dict:
     conn.close()
     return {"device_ip": device_ip, "count": len(rows), "ports": rows}
 
+
+@app.post("/vault/unlock")
+def vault_unlock(request: VaultUnlockRequest) -> dict:
+    """
+    Verify the vault master password without returning credential data.
+    """
+    get_db_connection().close()
+    fernet = unlock_vault(request.master_password)
+    return {"unlocked": fernet is not None}
+
+
+@app.post("/vault/add")
+def vault_add(request: VaultAddRequest) -> dict:
+    """
+    Unlock the vault and store a new encrypted credential.
+    """
+    get_db_connection().close()
+    fernet = unlock_vault(request.master_password)
+    if fernet is None:
+        raise HTTPException(status_code=401, detail="Incorrect master password")
+
+    row_id = add_credential(
+        fernet,
+        request.device_name,
+        request.device_ip,
+        request.username,
+        request.password,
+    )
+    return {
+        "id": row_id,
+        "strength_score": calculate_strength(request.password),
+    }
+
+
+@app.post("/vault/list")
+def vault_list(request: VaultUnlockRequest) -> dict:
+    """
+    Return vault credentials with metadata only — passwords are never exposed.
+    """
+    get_db_connection().close()
+    fernet = unlock_vault(request.master_password)
+    if fernet is None:
+        raise HTTPException(status_code=401, detail="Incorrect master password")
+
+    credentials = get_all_credentials(fernet)
+    masked = [
+        {
+            "id": cred["id"],
+            "device_name": cred["device_name"],
+            "device_ip": cred["device_ip"],
+            "username": cred["username"],
+            "strength_score": cred["strength_score"],
+            "is_compromised": cred["is_compromised"],
+            "last_checked": cred["last_checked"],
+            "created_at": cred["created_at"],
+        }
+        for cred in credentials
+    ]
+    return {"count": len(masked), "credentials": masked}
+
+
+@app.delete("/vault/{credential_id}")
+def vault_delete(credential_id: int) -> dict:
+    """Delete a stored credential by id."""
+    get_db_connection().close()
+    delete_credential(credential_id)
+    return {"deleted": True}
+
+
 @app.get("/")
 def root() -> dict:
     """Health check and API overview."""
@@ -404,6 +496,10 @@ def root() -> dict:
             "GET /ports",
             "GET /ports/dangerous",
             "GET /ports/{device_ip}",
+            "POST /vault/unlock",
+            "POST /vault/add",
+            "POST /vault/list",
+            "DELETE /vault/{credential_id}",
         ],
     }
 
