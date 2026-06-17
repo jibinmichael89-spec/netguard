@@ -185,6 +185,47 @@ def list_alerts() -> dict:
     }
 
 
+@app.get("/alerts/security")
+def list_security_alerts() -> dict:
+    """
+    Return all ARP spoof and other security alerts from the alerts table.
+
+    Ordered by most recent first.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT * FROM alerts
+        ORDER BY timestamp DESC
+        """
+    )
+    alerts = rows_to_dicts(cursor.fetchall())
+    conn.close()
+    return {"count": len(alerts), "alerts": alerts}
+
+
+@app.get("/alerts/security/critical")
+def list_critical_security_alerts() -> dict:
+    """
+    Return only Critical-severity security alerts.
+
+    Ordered by most recent first.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT * FROM alerts
+        WHERE severity = 'Critical'
+        ORDER BY timestamp DESC
+        """
+    )
+    alerts = rows_to_dicts(cursor.fetchall())
+    conn.close()
+    return {"count": len(alerts), "alerts": alerts}
+
+
 @app.get("/dns")
 def list_dns_queries() -> dict:
     """
@@ -328,6 +369,8 @@ def root() -> dict:
             "GET /devices",
             "GET /devices/new",
             "GET /alerts",
+            "GET /alerts/security",
+            "GET /alerts/security/critical",
             "GET /dns",
             "GET /dns/suspicious",
             "GET /dns/summary",
