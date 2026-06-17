@@ -8,3 +8,6 @@ uvicorn[standard]>=0.27.0
 
 # MAC vendor OUI lookup via HTTP
 requests>=2.31.0
+
+# Encrypted password vault
+cryptography>=42.0.0
