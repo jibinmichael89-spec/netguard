@@ -159,14 +159,40 @@ def init_database(db_path: str) -> None:
             mac_address TEXT    NOT NULL UNIQUE,
             vendor      TEXT,
             hostname    TEXT,
+            device_tag  TEXT    DEFAULT NULL,
+            is_trusted  INTEGER DEFAULT 0,
+            is_blocked  INTEGER DEFAULT 0,
             first_seen  TEXT    NOT NULL,
             last_seen   TEXT    NOT NULL,
             status      TEXT    NOT NULL DEFAULT 'online'
         )
         """
     )
+    _ensure_device_trust_columns(conn)
+    cursor.execute("PRAGMA table_info(devices)")
+    columns = {row[1] for row in cursor.fetchall()}
+    if "device_tag" not in columns:
+        cursor.execute(
+            "ALTER TABLE devices ADD COLUMN device_tag TEXT DEFAULT NULL"
+        )
     conn.commit()
     conn.close()
+
+
+def _ensure_device_trust_columns(conn: sqlite3.Connection) -> None:
+    """Add is_trusted and is_blocked columns if they do not already exist."""
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(devices)")
+    columns = {row[1] for row in cursor.fetchall()}
+    if "is_trusted" not in columns:
+        cursor.execute(
+            "ALTER TABLE devices ADD COLUMN is_trusted INTEGER DEFAULT 0"
+        )
+    if "is_blocked" not in columns:
+        cursor.execute(
+            "ALTER TABLE devices ADD COLUMN is_blocked INTEGER DEFAULT 0"
+        )
+    conn.commit()
 
 
 def get_known_macs(db_path: str) -> set[str]:

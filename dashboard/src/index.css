@@ -1,0 +1,43 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", system-ui, sans-serif;
+  --color-ng-bg: #0f1117;
+  --color-ng-card: #1a1d26;
+  --color-ng-elevated: #232733;
+  --color-ng-border: #2e3340;
+  --color-ng-accent: #00d4ff;
+  --color-ng-alert: #ff4444;
+  --color-ng-warning: #ffb800;
+  --color-ng-safe: #00ff88;
+}
+
+@keyframes pulse-critical {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.45);
+  }
+  50% {
+    opacity: 0.9;
+    box-shadow: 0 0 10px 3px rgba(255, 68, 68, 0.55);
+  }
+}
+
+.animate-pulse-critical {
+  animation: pulse-critical 2s ease-in-out infinite;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background-color: var(--color-ng-bg);
+  color: #c9cdd4;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+}

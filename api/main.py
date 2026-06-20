@@ -5,12 +5,15 @@ stored by the ARP scanner in the shared SQLite database.
 """
 
 import os
+import socket
 import sqlite3
 import sys
 from datetime import datetime, timedelta, timezone
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 sys.path.insert(0, os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")), "daemon", "vault"))
@@ -21,7 +24,6 @@ from password_vault import (
     get_all_credentials,
     unlock_vault,
 )
-
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -58,7 +60,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=False,
-    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["*"],
     max_age=3600,
@@ -67,7 +69,7 @@ app.add_middleware(
 
 def get_db_connection() -> sqlite3.Connection:
     """
-    Open a read-only connection to the NetGuard SQLite database.
+    Open a connection to the NetGuard SQLite database.
 
     Raises HTTP 503 if the database file does not exist yet (scanner
     has not run).
@@ -79,12 +81,56 @@ def get_db_connection() -> sqlite3.Connection:
         )
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    _ensure_device_tag_column(conn)
+    _ensure_device_trust_columns(conn)
     return conn
+
+
+def _ensure_device_tag_column(conn: sqlite3.Connection) -> None:
+    """Add device_tag column to devices table if it does not already exist."""
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(devices)")
+    columns = {row[1] for row in cursor.fetchall()}
+    if "device_tag" not in columns:
+        cursor.execute(
+            "ALTER TABLE devices ADD COLUMN device_tag TEXT DEFAULT NULL"
+        )
+        conn.commit()
+
+
+def _ensure_device_trust_columns(conn: sqlite3.Connection) -> None:
+    """Add is_trusted and is_blocked columns if they do not already exist."""
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(devices)")
+    columns = {row[1] for row in cursor.fetchall()}
+    changed = False
+    if "is_trusted" not in columns:
+        cursor.execute(
+            "ALTER TABLE devices ADD COLUMN is_trusted INTEGER DEFAULT 0"
+        )
+        changed = True
+    if "is_blocked" not in columns:
+        cursor.execute(
+            "ALTER TABLE devices ADD COLUMN is_blocked INTEGER DEFAULT 0"
+        )
+        changed = True
+    if changed:
+        conn.commit()
 
 
 def rows_to_dicts(rows: list[sqlite3.Row]) -> list[dict]:
     """Convert SQLite Row objects to plain Python dictionaries."""
     return [dict(row) for row in rows]
+
+
+def _get_device_row(conn: sqlite3.Connection, device_id: int) -> sqlite3.Row:
+    """Return a device row by primary key or raise HTTP 404."""
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM devices WHERE id = ?", (device_id,))
+    row = cursor.fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Device not found")
+    return row
 
 
 def categorize_domain(domain: str) -> str:
@@ -109,23 +155,205 @@ class VaultAddRequest(BaseModel):
     password: str
 
 
+class DeviceTagRequest(BaseModel):
+    device_tag: str
+
+
+class DeviceTrustRequest(BaseModel):
+    is_trusted: bool
+
+
+class DeviceBlockRequest(BaseModel):
+    is_blocked: bool
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
 
+@app.get("/api")
+def api_info() -> dict:
+    """API overview and available endpoints."""
+    return {
+        "service": "NetGuard API",
+        "endpoints": [
+            "GET /system/info",
+            "GET /devices",
+            "GET /devices?include_blocked=true",
+            "GET /devices/new",
+            "PUT /devices/{device_ip}/tag",
+            "PUT /devices/id/{device_id}/trust",
+            "PUT /devices/id/{device_id}/block",
+            "PUT /devices/{device_ip}/trust",
+            "PUT /devices/{device_ip}/block",
+            "GET /alerts",
+            "GET /alerts/security",
+            "GET /alerts/security/critical",
+            "GET /dhcp/servers",
+            "GET /dns",
+            "GET /dns/suspicious",
+            "GET /dns/summary",
+            "GET /ports",
+            "GET /ports/dangerous",
+            "GET /ports/{device_ip}",
+            "POST /vault/unlock",
+            "POST /vault/add",
+            "POST /vault/list",
+            "DELETE /vault/{credential_id}",
+        ],
+    }
+
+
+@app.get("/system/info")
+def system_info() -> dict:
+    """Return host OS details so the dashboard can show accurate block warnings."""
+    if sys.platform == "win32":
+        platform_name = "windows"
+    elif sys.platform.startswith("linux"):
+        platform_name = "linux"
+    elif sys.platform == "darwin":
+        platform_name = "darwin"
+    else:
+        platform_name = sys.platform
+
+    return {
+        "platform": platform_name,
+        "network_block_supported": platform_name != "windows",
+        "hostname": socket.gethostname(),
+    }
+
+
 @app.get("/devices")
-def list_devices() -> dict:
+def list_devices(include_blocked: bool = Query(default=False)) -> dict:
     """
     Return all devices discovered by the ARP scanner.
 
-    Includes online and offline devices with full metadata.
+    Blocked devices are excluded by default. Pass include_blocked=true
+    to include blocked devices for admin/recovery purposes.
     """
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM devices ORDER BY ip_address")
+    if include_blocked:
+        cursor.execute("SELECT * FROM devices ORDER BY ip_address")
+    else:
+        cursor.execute(
+            """
+            SELECT * FROM devices
+            WHERE COALESCE(is_blocked, 0) = 0
+            ORDER BY ip_address
+            """
+        )
     devices = rows_to_dicts(cursor.fetchall())
     conn.close()
     return {"count": len(devices), "devices": devices}
+
+
+@app.put("/devices/{device_ip}/tag")
+def update_device_tag(device_ip: str, request: DeviceTagRequest) -> dict:
+    """
+    Set or update a user-defined tag for a device by IP address.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE devices
+        SET device_tag = ?
+        WHERE ip_address = ?
+        """,
+        (request.device_tag.strip(), device_ip),
+    )
+    if cursor.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    conn.commit()
+    conn.close()
+    return {
+        "device_ip": device_ip,
+        "device_tag": request.device_tag.strip(),
+        "success": True,
+    }
+
+
+@app.put("/devices/id/{device_id}/trust")
+def update_device_trust_by_id(device_id: int, request: DeviceTrustRequest) -> dict:
+    """Mark a device as trusted or remove trusted status by device id."""
+    conn = get_db_connection()
+    device = _get_device_row(conn, device_id)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE devices
+        SET is_trusted = ?
+        WHERE id = ?
+        """,
+        (1 if request.is_trusted else 0, device_id),
+    )
+    conn.commit()
+    conn.close()
+    return {
+        "device_ip": device["ip_address"],
+        "is_trusted": request.is_trusted,
+        "success": True,
+    }
+
+
+@app.put("/devices/id/{device_id}/block")
+def update_device_block_by_id(device_id: int, request: DeviceBlockRequest) -> dict:
+    """Block or unblock a device by device id."""
+    conn = get_db_connection()
+    device = _get_device_row(conn, device_id)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE devices
+        SET is_blocked = ?
+        WHERE id = ?
+        """,
+        (1 if request.is_blocked else 0, device_id),
+    )
+    conn.commit()
+    conn.close()
+    return {
+        "device_ip": device["ip_address"],
+        "is_blocked": request.is_blocked,
+        "success": True,
+    }
+
+
+@app.put("/devices/{device_ip}/trust")
+def update_device_trust(device_ip: str, request: DeviceTrustRequest) -> dict:
+    """Mark a device as trusted or remove trusted status."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id FROM devices WHERE ip_address = ?",
+        (device_ip,),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Device not found")
+    conn.close()
+    return update_device_trust_by_id(row[0], request)
+
+
+@app.put("/devices/{device_ip}/block")
+def update_device_block(device_ip: str, request: DeviceBlockRequest) -> dict:
+    """Block or unblock a device on the network."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id FROM devices WHERE ip_address = ?",
+        (device_ip,),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Device not found")
+    conn.close()
+    return update_device_block_by_id(row[0], request)
 
 
 @app.get("/devices/new")
@@ -478,30 +706,26 @@ def vault_delete(credential_id: int) -> dict:
     return {"deleted": True}
 
 
-@app.get("/")
-def root() -> dict:
-    """Health check and API overview."""
-    return {
-        "service": "NetGuard API",
-       "endpoints": [
-            "GET /devices",
-            "GET /devices/new",
-            "GET /alerts",
-            "GET /alerts/security",
-            "GET /alerts/security/critical",
-            "GET /dhcp/servers",
-            "GET /dns",
-            "GET /dns/suspicious",
-            "GET /dns/summary",
-            "GET /ports",
-            "GET /ports/dangerous",
-            "GET /ports/{device_ip}",
-            "POST /vault/unlock",
-            "POST /vault/add",
-            "POST /vault/list",
-            "DELETE /vault/{credential_id}",
-        ],
-    }
+# Serve static dashboard files (registered after API routes)
+dashboard_path = os.path.join(PROJECT_ROOT, "api", "static")
+assets_path = os.path.join(dashboard_path, "assets")
+
+if os.path.exists(dashboard_path):
+
+    @app.get("/")
+    async def serve_dashboard() -> FileResponse:
+        return FileResponse(os.path.join(dashboard_path, "index.html"))
+
+    if os.path.exists(assets_path):
+        app.mount("/assets", StaticFiles(directory=assets_path), name="assets")
+
+    @app.get("/favicon.svg")
+    async def serve_favicon() -> FileResponse:
+        return FileResponse(os.path.join(dashboard_path, "favicon.svg"))
+
+    @app.get("/icons.svg")
+    async def serve_icons() -> FileResponse:
+        return FileResponse(os.path.join(dashboard_path, "icons.svg"))
 
 
 # ---------------------------------------------------------------------------
