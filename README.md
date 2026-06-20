@@ -103,3 +103,33 @@ Each device record includes:
 - MAC vendor lookup uses [macvendors.com](https://macvendors.com) and is rate-limited on free tier; lookups are cached in the database after the first scan.
 - Hostname resolution depends on reverse DNS being configured on your network.
 - The API returns HTTP 503 until the scanner has created `netguard.db`.
+
+## Network Blocking (disconnect devices)
+
+By default, **Block** in the dashboard only hides a device from the UI. To actually **disconnect blocked devices from the network**, run the block enforcer on your Raspberry Pi (Linux, root required):
+
+```bash
+sudo python3 daemon/enforcement/network_blocker.py
+```
+
+The enforcer watches `netguard.db` for devices with `is_blocked = 1` and isolates them using ARP cache poisoning (the device and router stop forwarding traffic to each other).
+
+**Requirements:**
+
+- Linux host on the same LAN as blocked devices (typically your Pi)
+- Root/sudo privileges
+- ARP scanner and API should already be running
+
+**Optional:** set a fixed gateway IP if auto-detection is wrong:
+
+```bash
+export NETGUARD_GATEWAY_IP=192.168.1.1
+sudo -E python3 daemon/enforcement/network_blocker.py
+```
+
+**Limitations:**
+
+- Not supported on Windows.
+- Blocking is active only while the enforcer daemon is running.
+- Effectiveness depends on your router/AP (some guest networks use client isolation).
+- Unblocking in the dashboard restores UI visibility immediately; network access returns once the enforcer stops poisoning ARP (or after you unblock and the enforcer picks up the change within a few seconds).
