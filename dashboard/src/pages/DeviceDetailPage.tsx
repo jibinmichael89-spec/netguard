@@ -10,17 +10,17 @@ import type {
 } from "../types";
 import { PORT_FETCH_TIMEOUT_MS } from "../config";
 import { formatTimestamp } from "../utils/format";
-import { getBlockModalMessage } from "../utils/blockPlatform";
-import { useSystemPlatform } from "../hooks/useSystemPlatform";
+import { useSystemDetection } from "../hooks/useSystemDetection";
 import StatusBadge from "../components/StatusBadge";
 import ConfirmModal from "../components/ConfirmModal";
+import BlockConfirmDialog from "../components/BlockConfirmDialog";
 import BlockHelpTooltip from "../components/BlockHelpTooltip";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ScannerOffline from "../components/ScannerOffline";
 
 export default function DeviceDetailPage() {
   const { ip } = useParams<{ ip: string }>();
-  const platform = useSystemPlatform();
+  const { systemType } = useSystemDetection();
   const [device, setDevice] = useState<DevicesResponse["devices"][0] | null>(
     null,
   );
@@ -200,7 +200,7 @@ export default function DeviceDetailPage() {
               <ShieldBan className="h-4 w-4" />
               {isBlocked ? "Unblock This Device" : "Block This Device"}
             </button>
-            <BlockHelpTooltip platform={platform} />
+            <BlockHelpTooltip systemType={systemType} />
           </div>
         </div>
 
@@ -315,14 +315,13 @@ export default function DeviceDetailPage() {
         onClose={() => setTrustModalOpen(false)}
       />
 
-      <ConfirmModal
-        isOpen={blockModalOpen}
-        title={isBlocked ? "Unblock Device" : "Block Device"}
-        message={getBlockModalMessage(isBlocked, platform)}
-        confirmLabel={isBlocked ? "Unblock Device" : "Block Device"}
+      <BlockConfirmDialog
+        open={blockModalOpen}
+        isBlocked={isBlocked}
+        systemType={systemType}
         loading={actionLoading}
         onConfirm={handleBlockConfirm}
-        onClose={() => setBlockModalOpen(false)}
+        onOpenChange={setBlockModalOpen}
       />
     </div>
   );

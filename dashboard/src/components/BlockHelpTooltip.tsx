@@ -1,13 +1,13 @@
 import { HelpCircle } from "lucide-react";
-import type { BlockPlatform } from "../utils/blockPlatform";
-import { getBlockTooltip } from "../utils/blockPlatform";
+import type { SystemType } from "../hooks/useSystemDetection";
+import { getBlockTooltip } from "../utils/blockMessages";
 
 interface BlockHelpTooltipProps {
-  platform: BlockPlatform;
+  systemType: SystemType;
 }
 
-export default function BlockHelpTooltip({ platform }: BlockHelpTooltipProps) {
-  const tooltip = getBlockTooltip(platform);
+export default function BlockHelpTooltip({ systemType }: BlockHelpTooltipProps) {
+  const tooltip = getBlockTooltip(systemType);
 
   return (
     <span className="group relative inline-flex">
@@ -15,9 +15,8 @@ export default function BlockHelpTooltip({ platform }: BlockHelpTooltipProps) {
         type="button"
         className="text-gray-500 transition hover:text-gray-300"
         aria-label={tooltip}
-        tabIndex={-1}
       >
-        <HelpCircle className="h-3.5 w-3.5" />
+        <HelpCircle className="h-3.5 w-3.5" aria-hidden="true" />
       </button>
       <span
         role="tooltip"
