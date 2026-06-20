@@ -46,3 +46,11 @@ function detectSystem(): SystemDetection {
 export function useSystemDetection(): SystemDetection {
   return useMemo(() => detectSystem(), []);
 }
+
+export type InstructionPlatform = "windows" | "linux" | "pi";
+
+export function instructionPlatform(systemType: SystemType): InstructionPlatform {
+  if (systemType === "windows") return "windows";
+  if (systemType === "pi") return "pi";
+  return "linux";
+}

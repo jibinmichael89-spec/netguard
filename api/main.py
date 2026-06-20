@@ -4,6 +4,7 @@ FastAPI server that exposes device data and security alerts
 stored by the ARP scanner in the shared SQLite database.
 """
 
+import json
 import os
 import socket
 import sqlite3
@@ -31,6 +32,10 @@ from password_vault import (
 # Path to the shared SQLite database (project root)
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DB_PATH = os.path.join(PROJECT_ROOT, "netguard.db")
+PORT_INSTRUCTIONS_PATH = os.path.join(
+    PROJECT_ROOT, "daemon", "data", "port_instructions.json"
+)
+VALID_INSTRUCTION_PLATFORMS = frozenset({"windows", "linux", "pi"})
 
 # How far back to look when reporting "new" devices (hours)
 NEW_DEVICE_WINDOW_HOURS = 24
@@ -83,6 +88,7 @@ def get_db_connection() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     _ensure_device_tag_column(conn)
     _ensure_device_trust_columns(conn)
+    _ensure_inbound_alert_columns(conn)
     return conn
 
 
@@ -118,6 +124,25 @@ def _ensure_device_trust_columns(conn: sqlite3.Connection) -> None:
         conn.commit()
 
 
+def _ensure_inbound_alert_columns(conn: sqlite3.Connection) -> None:
+    """Add inbound connection columns to alerts table if missing."""
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(alerts)")
+    columns = {row[1] for row in cursor.fetchall()}
+    changed = False
+    if "source_ip" not in columns:
+        cursor.execute("ALTER TABLE alerts ADD COLUMN source_ip TEXT")
+        changed = True
+    if "source_port" not in columns:
+        cursor.execute("ALTER TABLE alerts ADD COLUMN source_port INTEGER")
+        changed = True
+    if "destination_port" not in columns:
+        cursor.execute("ALTER TABLE alerts ADD COLUMN destination_port INTEGER")
+        changed = True
+    if changed:
+        conn.commit()
+
+
 def rows_to_dicts(rows: list[sqlite3.Row]) -> list[dict]:
     """Convert SQLite Row objects to plain Python dictionaries."""
     return [dict(row) for row in rows]
@@ -131,6 +156,36 @@ def _get_device_row(conn: sqlite3.Connection, device_id: int) -> sqlite3.Row:
     if row is None:
         raise HTTPException(status_code=404, detail="Device not found")
     return row
+
+
+def _get_device_by_ip(conn: sqlite3.Connection, device_ip: str) -> sqlite3.Row:
+    """Return a device row by IP address or raise HTTP 404."""
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM devices WHERE ip_address = ?", (device_ip,))
+    row = cursor.fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Device not found")
+    return row
+
+
+def _format_alert_timestamp(timestamp: str) -> str:
+    """Format an ISO timestamp for inbound attempt API responses."""
+    try:
+        dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return timestamp[:19].replace("T", " ")
+
+
+def _load_port_instructions() -> dict:
+    """Load port remediation instructions from the JSON data file."""
+    if not os.path.exists(PORT_INSTRUCTIONS_PATH):
+        raise HTTPException(
+            status_code=503,
+            detail="Port instructions file not found.",
+        )
+    with open(PORT_INSTRUCTIONS_PATH, encoding="utf-8") as handle:
+        return json.load(handle)
 
 
 def categorize_domain(domain: str) -> str:
@@ -189,12 +244,14 @@ def api_info() -> dict:
             "GET /alerts",
             "GET /alerts/security",
             "GET /alerts/security/critical",
+            "GET /inbound/{device_ip}",
             "GET /dhcp/servers",
             "GET /dns",
             "GET /dns/suspicious",
             "GET /dns/summary",
             "GET /ports",
             "GET /ports/dangerous",
+            "GET /ports/{port}/instructions",
             "GET /ports/{device_ip}",
             "POST /vault/unlock",
             "POST /vault/add",
@@ -477,6 +534,52 @@ def list_critical_security_alerts() -> dict:
     return {"count": len(alerts), "alerts": alerts}
 
 
+@app.get("/inbound/{device_ip}")
+def list_inbound_attempts(
+    device_ip: str,
+    limit: int = Query(default=100, ge=1, le=1000),
+) -> dict:
+    """
+    Return inbound connection attempts targeting a specific device.
+
+    Reads CRITICAL inbound_connection alerts recorded by the inbound
+    connection detector. Returns an empty list when no attempts exist.
+    """
+    conn = get_db_connection()
+    _get_device_by_ip(conn, device_ip)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT source_ip, source_port, destination_port, severity, timestamp, description
+        FROM alerts
+        WHERE alert_type = 'inbound_connection' AND device_ip = ?
+        ORDER BY timestamp DESC
+        LIMIT ?
+        """,
+        (device_ip, limit),
+    )
+    rows = rows_to_dicts(cursor.fetchall())
+    conn.close()
+
+    inbound_attempts = [
+        {
+            "source_ip": row["source_ip"],
+            "source_port": row["source_port"],
+            "destination_port": row["destination_port"],
+            "severity": row["severity"],
+            "timestamp": _format_alert_timestamp(row["timestamp"]),
+            "description": row["description"],
+        }
+        for row in rows
+    ]
+
+    return {
+        "device_ip": device_ip,
+        "count": len(inbound_attempts),
+        "inbound_attempts": inbound_attempts,
+    }
+
+
 @app.get("/dhcp/servers")
 def list_dhcp_servers() -> dict:
     """
@@ -616,6 +719,50 @@ def list_dangerous_ports() -> dict:
     rows = rows_to_dicts(cursor.fetchall())
     conn.close()
     return {"count": len(rows), "dangerous_ports": rows}
+
+
+@app.get("/ports/{port}/instructions")
+def get_port_instructions(
+    port: int,
+    platform: str = Query(default="linux"),
+) -> dict:
+    """
+    Return OS-specific steps to close a dangerous port.
+
+    Reads remediation guidance from daemon/data/port_instructions.json.
+    Platform must be one of: windows, linux, pi.
+    """
+    platform_key = platform.lower().strip()
+    if platform_key not in VALID_INSTRUCTION_PLATFORMS:
+        raise HTTPException(
+            status_code=400,
+            detail="Platform must be one of: windows, linux, pi",
+        )
+
+    instructions = _load_port_instructions()
+    port_key = str(port)
+    if port_key not in instructions:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No instructions available for port {port}",
+        )
+
+    entry = instructions[port_key]
+    platform_data = entry.get(platform_key)
+    if not platform_data:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No {platform_key} instructions for port {port}",
+        )
+
+    return {
+        "port": port,
+        "service": entry.get("service"),
+        "dangerous_reason": entry.get("dangerous_reason"),
+        "platform": platform_key,
+        "description": platform_data.get("description"),
+        "steps": platform_data.get("steps", []),
+    }
 
 
 @app.get("/ports/{device_ip}")

@@ -1,0 +1,852 @@
+{
+  "21": {
+    "service": "FTP",
+    "dangerous_reason": "Unencrypted file transfer. Credentials are sent in plaintext and can be sniffed on the network. Prefer SFTP or SCP instead.",
+    "windows": {
+      "description": "Disable FTP on Windows",
+      "steps": [
+        "Press Win+R, type 'services.msc', press Enter",
+        "Find 'Microsoft FTP Service' or 'FTP Publishing Service'",
+        "Right-click → Properties",
+        "Set 'Startup type' to 'Disabled'",
+        "Click 'Stop', then OK",
+        "Optional: Open 'Turn Windows features on or off' → uncheck IIS → FTP Server"
+      ]
+    },
+    "linux": {
+      "description": "Stop FTP on Linux",
+      "steps": [
+        "Open terminal",
+        "Run: sudo systemctl stop vsftpd",
+        "Run: sudo systemctl disable vsftpd",
+        "If using proftpd: sudo systemctl stop proftpd && sudo systemctl disable proftpd",
+        "Verify: sudo ss -tlnp | grep :21 (should return nothing)"
+      ]
+    },
+    "pi": {
+      "description": "Stop FTP on Raspberry Pi",
+      "steps": [
+        "SSH into Pi",
+        "Run: sudo systemctl stop vsftpd",
+        "Run: sudo systemctl disable vsftpd",
+        "Use SFTP over SSH instead: sftp user@pi-ip"
+      ]
+    }
+  },
+  "22": {
+    "service": "SSH",
+    "dangerous_reason": "Remote shell access. Brute-force and credential-stuffing attacks are constant. Weak passwords or exposed keys allow full device control.",
+    "windows": {
+      "description": "Disable SSH Server in Windows",
+      "steps": [
+        "Press Win+R, type 'services.msc', press Enter",
+        "Find 'OpenSSH SSH Server'",
+        "Right-click → Properties",
+        "Set 'Startup type' to 'Disabled'",
+        "Click 'Stop', then OK"
+      ]
+    },
+    "linux": {
+      "description": "Stop SSH daemon on Linux",
+      "steps": [
+        "Open terminal",
+        "Run: sudo systemctl stop ssh",
+        "Run: sudo systemctl disable ssh",
+        "Verify: sudo systemctl status ssh (should show 'inactive')"
+      ]
+    },
+    "pi": {
+      "description": "Stop SSH on Raspberry Pi",
+      "steps": [
+        "Run: sudo systemctl stop ssh",
+        "Run: sudo systemctl disable ssh",
+        "Or: sudo raspi-config → Interface Options → SSH → Disable"
+      ]
+    }
+  },
+  "23": {
+    "service": "Telnet",
+    "dangerous_reason": "Unencrypted remote shell. Completely obsolete and replaced by SSH. Session hijacking and credential theft are trivial on local networks.",
+    "windows": {
+      "description": "Disable Telnet on Windows",
+      "steps": [
+        "Press Win+R, type 'optionalfeatures', press Enter",
+        "Uncheck 'Telnet Client' and 'Telnet Server' if listed",
+        "Press Win+R, type 'services.msc', press Enter",
+        "Find 'Telnet' service → Properties → Startup type: Disabled → Stop"
+      ]
+    },
+    "linux": {
+      "description": "Stop Telnet on Linux",
+      "steps": [
+        "Open terminal",
+        "Run: sudo systemctl stop telnet.socket",
+        "Run: sudo systemctl disable telnet.socket",
+        "Run: sudo apt remove telnetd -y (Debian/Ubuntu)",
+        "Use SSH instead of Telnet"
+      ]
+    },
+    "pi": {
+      "description": "Stop Telnet on Raspberry Pi",
+      "steps": [
+        "Run: sudo systemctl stop telnet.socket",
+        "Run: sudo systemctl disable telnet.socket",
+        "Run: sudo apt remove telnetd -y",
+        "Use SSH with key-based login instead"
+      ]
+    }
+  },
+  "25": {
+    "service": "SMTP",
+    "dangerous_reason": "Mail server port. If this is not your intentional mail server, it is an open-relay risk and a common spam and phishing vector.",
+    "windows": {
+      "description": "Disable SMTP on Windows",
+      "steps": [
+        "Press Win+R, type 'services.msc', press Enter",
+        "Find 'Simple Mail Transfer Protocol (SMTP)' or IIS mail services",
+        "Right-click → Properties → Startup type: Disabled → Stop",
+        "In IIS Manager, remove any SMTP virtual server if present"
+      ]
+    },
+    "linux": {
+      "description": "Stop SMTP on Linux",
+      "steps": [
+        "Open terminal",
+        "Run: sudo systemctl stop postfix",
+        "Run: sudo systemctl disable postfix",
+        "If using sendmail: sudo systemctl stop sendmail && sudo systemctl disable sendmail",
+        "Verify: sudo ss -tlnp | grep :25"
+      ]
+    },
+    "pi": {
+      "description": "Stop SMTP on Raspberry Pi",
+      "steps": [
+        "Run: sudo systemctl stop postfix",
+        "Run: sudo systemctl disable postfix",
+        "Home Pis rarely need a mail server — disable unless intentional"
+      ]
+    }
+  },
+  "53": {
+    "service": "DNS",
+    "dangerous_reason": "DNS server port. If you are not running a DNS server, this should not be open. Misconfigured DNS is abused in amplification DDoS attacks (CVE-2023-28458 class issues on various DNS software).",
+    "windows": {
+      "description": "Disable DNS Server on Windows",
+      "steps": [
+        "Press Win+R, type 'services.msc', press Enter",
+        "Find 'DNS Server' service",
+        "Right-click → Properties → Startup type: Disabled → Stop",
+        "Or: Server Manager → Remove DNS Server role if installed"
+      ]
+    },
+    "linux": {
+      "description": "Stop DNS on Linux",
+      "steps": [
+        "Open terminal",
+        "Run: sudo systemctl stop bind9",
+        "Run: sudo systemctl disable bind9",
+        "If using dnsmasq on Pi as LAN DNS only, bind to local interface — not 0.0.0.0",
+        "Verify: sudo ss -tlnp | grep :53"
+      ]
+    },
+    "pi": {
+      "description": "Stop public DNS on Raspberry Pi",
+      "steps": [
+        "Run: sudo systemctl stop bind9 (if installed)",
+        "Run: sudo systemctl disable bind9",
+        "Pi-hole/dnsmasq should listen on LAN IP only, never be port-forwarded",
+        "Do not expose port 53 to the internet"
+      ]
+    }
+  },
+  "80": {
+    "service": "HTTP",
+    "dangerous_reason": "Unencrypted web traffic. Logins and session cookies can be intercepted. If you run a web server, use HTTPS (443) with valid TLS instead.",
+    "windows": {
+      "description": "Disable HTTP web server on Windows",
+      "steps": [
+        "Press Win+R, type 'services.msc', press Enter",
+        "Find 'World Wide Web Publishing Service' (IIS)",
+        "Right-click → Properties → Startup type: Disabled → Stop",
+        "Or: Turn Windows features off → uncheck 'Internet Information Services'"
+      ]
+    },
+    "linux": {
+      "description": "Stop HTTP web server on Linux",
+      "steps": [
+        "Open terminal",
+        "Run: sudo systemctl stop apache2 (or nginx)",
+        "Run: sudo systemctl disable apache2 (or nginx)",
+        "If web server is needed, configure HTTPS on port 443 only",
+        "Verify: sudo ss -tlnp | grep :80"
+      ]
+    },
+    "pi": {
+      "description": "Stop HTTP on Raspberry Pi",
+      "steps": [
+        "Run: sudo systemctl stop apache2 (or nginx/lighttpd)",
+        "Run: sudo systemctl disable apache2",
+        "Use HTTPS or restrict to localhost for admin panels",
+        "Do not port-forward port 80 from your router"
+      ]
+    }
+  },
+  "139": {
+    "service": "NetBIOS",
+    "dangerous_reason": "Legacy Windows file sharing. Highly exploitable — used by worms like Conficker and EternalBlue-era lateral movement on flat networks.",
+    "windows": {
+      "description": "Disable NetBIOS on Windows",
+      "steps": [
+        "Open Settings → Network & Internet → Advanced network settings → More adapter options",
+        "Right-click your connection → Properties → IPv4 → Advanced → WINS tab",
+        "Select 'Disable NetBIOS over TCP/IP'",
+        "Disable 'File and Printer Sharing' if not needed"
+      ]
+    },
+    "linux": {
+      "description": "Stop NetBIOS/Samba on Linux",
+      "steps": [
+        "Open terminal",
+        "Run: sudo systemctl stop nmbd",
+        "Run: sudo systemctl disable nmbd",
+        "In /etc/samba/smb.conf add: disable netbios = yes",
+        "Verify: sudo ss -tlnp | grep :139"
+      ]
+    },
+    "pi": {
+      "description": "Stop NetBIOS on Raspberry Pi",
+      "steps": [
+        "Run: sudo systemctl stop nmbd smbd",
+        "Run: sudo systemctl disable nmbd smbd",
+        "Disable Samba unless you intentionally share files on the LAN"
+      ]
+    }
+  },
+  "443": {
+    "service": "HTTPS",
+    "dangerous_reason": "Encrypted web server. If unintended, stop the service. If legitimate, restrict with firewall rules and keep software patched (Heartbleed CVE-2014-0160 affected TLS stacks).",
+    "windows": {
+      "description": "Manage HTTPS web server on Windows",
+      "steps": [
+        "Press Win+R, type 'services.msc', press Enter",
+        "If IIS is unintended: disable 'World Wide Web Publishing Service'",
+        "Press Win+R, type 'wf.msc' → restrict inbound 443 to trusted networks",
+        "Keep Windows and IIS fully updated"
+      ]
+    },
+    "linux": {
+      "description": "Manage HTTPS on Linux",
+      "steps": [
+        "If unintended: sudo systemctl stop nginx apache2",
+        "Run: sudo systemctl disable nginx (or apache2)",
+        "If needed: bind to specific IPs and use firewall (ufw allow from LAN only)",
+        "Verify: sudo ss -tlnp | grep :443"
+      ]
+    },
+    "pi": {
+      "description": "Manage HTTPS on Raspberry Pi",
+      "steps": [
+        "If unintended web server: sudo systemctl stop nginx apache2",
+        "Run: sudo systemctl disable nginx",
+        "Use ufw to allow 443 only from your LAN subnet",
+        "Do not expose admin panels to the internet without authentication"
+      ]
+    }
+  },
+  "445": {
+    "service": "SMB (Samba/File Sharing)",
+    "dangerous_reason": "Primary ransomware vector. WannaCry (MS17-010/EternalBlue) and NotPetya exploited SMB. Should never be exposed beyond a trusted LAN.",
+    "windows": {
+      "description": "Disable File Sharing on Windows",
+      "steps": [
+        "Press Win+R, type 'services.msc', press Enter",
+        "Find 'Server' service",
+        "Right-click → Properties → Startup type: Disabled → Stop",
+        "Settings → Network → disable 'File and Printer Sharing' on public networks"
+      ]
+    },
+    "linux": {
+      "description": "Stop Samba on Linux",
+      "steps": [
+        "Open terminal",
+        "Run: sudo systemctl stop smbd nmbd",
+        "Run: sudo systemctl disable smbd nmbd",
+        "Verify: sudo systemctl status smbd (should show 'inactive')"
+      ]
+    },
+    "pi": {
+      "description": "Stop Samba on Raspberry Pi",
+      "steps": [
+        "Run: sudo systemctl stop smbd nmbd",
+        "Run: sudo systemctl disable smbd nmbd",
+        "Verify: sudo systemctl status smbd"
+      ]
+    }
+  },
+  "554": {
+    "service": "RTSP (Real Time Streaming)",
+    "dangerous_reason": "IP camera and video streaming. If unintended, stop the service — exposed streams leak live video. Default camera credentials are brute-forced constantly.",
+    "windows": {
+      "description": "Secure or disable RTSP on Windows",
+      "steps": [
+        "Identify the camera app or NVR using port 554",
+        "Change all default admin passwords on cameras",
+        "Disable UPnP and remote access in camera settings",
+        "Do not port-forward 554 from your router"
+      ]
+    },
+    "linux": {
+      "description": "Stop RTSP on Linux",
+      "steps": [
+        "Run: sudo ss -tlnp | grep :554",
+        "Stop the service: sudo systemctl stop mediamtx (or your NVR service)",
+        "Run: sudo systemctl disable <service-name>",
+        "Keep cameras on a separate VLAN or guest network"
+      ]
+    },
+    "pi": {
+      "description": "Disable RTSP on Raspberry Pi",
+      "steps": [
+        "Stop camera streaming service: sudo systemctl stop <rtsp-service>",
+        "Run: sudo systemctl disable <rtsp-service>",
+        "Use local viewing only — do not expose Pi cameras to the internet"
+      ]
+    }
+  },
+  "873": {
+    "service": "Rsync",
+    "dangerous_reason": "File sync daemon. If unintended, stop rsync — misconfigured rsync modules allow unauthenticated or weakly authenticated file access and data exfiltration.",
+    "windows": {
+      "description": "Disable Rsync on Windows",
+      "steps": [
+        "Rsync on Windows usually runs via Cygwin, WSL, or cwRsync",
+        "Run: netstat -ano | findstr :873",
+        "Stop the rsync daemon process or Windows service",
+        "Remove rsync from startup if not intentionally used"
+      ]
+    },
+    "linux": {
+      "description": "Stop Rsync on Linux",
+      "steps": [
+        "Open terminal",
+        "Run: sudo systemctl stop rsync",
+        "Run: sudo systemctl disable rsync",
+        "Edit /etc/default/rsync — set RSYNC_ENABLE=false",
+        "Verify: sudo ss -tlnp | grep :873"
+      ]
+    },
+    "pi": {
+      "description": "Stop Rsync on Raspberry Pi",
+      "steps": [
+        "Run: sudo systemctl stop rsync",
+        "Run: sudo systemctl disable rsync",
+        "If using rsync for backups, bind to localhost or require SSH tunnel only"
+      ]
+    }
+  },
+  "1433": {
+    "service": "Microsoft SQL Server (MSSQL)",
+    "dangerous_reason": "Extremely valuable target for ransomware and data theft. Should NEVER be exposed to the internet. SQL injection and brute-force attacks are automated at scale.",
+    "windows": {
+      "description": "Stop MSSQL immediately on Windows",
+      "steps": [
+        "Press Win+R, type 'services.msc', press Enter",
+        "Find 'SQL Server (MSSQLSERVER)' or named instance",
+        "Right-click → Properties → Startup type: Disabled → Stop",
+        "Or: SQL Server Configuration Manager → disable TCP/IP protocol",
+        "Block port 1433 in Windows Firewall for all public networks"
+      ]
+    },
+    "linux": {
+      "description": "Stop MSSQL on Linux",
+      "steps": [
+        "Open terminal",
+        "Run: sudo systemctl stop mssql-server",
+        "Run: sudo systemctl disable mssql-server",
+        "Verify: sudo ss -tlnp | grep :1433 (should return nothing)"
+      ]
+    },
+    "pi": {
+      "description": "Stop MSSQL on Raspberry Pi",
+      "steps": [
+        "Run: sudo systemctl stop mssql-server",
+        "Run: sudo systemctl disable mssql-server",
+        "MSSQL is rarely needed on Pi — use SQLite for local projects"
+      ]
+    }
+  },
+  "1521": {
+    "service": "Oracle Database",
+    "dangerous_reason": "Critical enterprise database. Should NEVER be exposed. Contains sensitive business data — targeted by APT groups and ransomware (CVE-2021-44228 Log4j affected Oracle middleware stacks).",
+    "windows": {
+      "description": "Stop Oracle Database on Windows",
+      "steps": [
+        "Press Win+R, type 'services.msc', press Enter",
+        "Find 'OracleServiceORCL' and 'OracleOraDB19Home1TNSListener'",
+        "Right-click each → Properties → Startup type: Disabled → Stop",
+        "Or use 'services.msc' → stop 'OracleService*' services"
+      ]
+    },
+    "linux": {
+      "description": "Stop Oracle Database on Linux",
+      "steps": [
+        "Open terminal",
+        "Run: sudo systemctl stop oracle-xe (or oracledb)",
+        "Run: sudo systemctl disable oracle-xe",
+        "As oracle user: lsnrctl stop",
+        "Verify: sudo ss -tlnp | grep :1521"
+      ]
+    },
+    "pi": {
+      "description": "Oracle Database on Raspberry Pi",
+      "steps": [
+        "Oracle is not typically run on Pi",
+        "If a listener is open: sudo ss -tlnp | grep :1521",
+        "Stop and disable the unexpected service immediately",
+        "Use SQLite or PostgreSQL bound to localhost for Pi projects"
+      ]
+    }
+  },
+  "1900": {
+    "service": "UPnP (SSDP)",
+    "dangerous_reason": "Universal Plug and Play can automatically open firewall holes. Abused in DDoS amplification attacks and Mirai botnet propagation on IoT devices.",
+    "windows": {
+      "description": "Disable UPnP on Windows and router",
+      "steps": [
+        "Log into your router admin page and disable UPnP",
+        "Windows Settings → Network → disable 'Network Discovery' on public networks",
+        "Do not allow apps to automatically configure port forwarding",
+        "Keep router firmware updated"
+      ]
+    },
+    "linux": {
+      "description": "Stop UPnP on Linux",
+      "steps": [
+        "Run: sudo systemctl stop miniupnpd",
+        "Run: sudo systemctl disable miniupnpd",
+        "Disable UPnP on your router (most important step)",
+        "Verify: sudo ss -ulnp | grep :1900"
+      ]
+    },
+    "pi": {
+      "description": "Stop UPnP on Raspberry Pi",
+      "steps": [
+        "Run: sudo systemctl stop miniupnpd",
+        "Run: sudo systemctl disable miniupnpd",
+        "Disable UPnP in your router settings",
+        "Do not run UPnP services on Pi unless absolutely required"
+      ]
+    }
+  },
+  "2049": {
+    "service": "NFS (Network File System)",
+    "dangerous_reason": "Allows remote file mounts over the network. Misconfigured exports permit unauthenticated access — used in lateral movement and data theft on Linux networks.",
+    "windows": {
+      "description": "Disable NFS on Windows",
+      "steps": [
+        "Press Win+R, type 'optionalfeatures', press Enter",
+        "Uncheck 'Services for NFS' and 'Client for NFS'",
+        "Press Win+R, type 'services.msc' → disable 'Server for NFS' if present",
+        "Use SMB or SFTP instead for file sharing"
+      ]
+    },
+    "linux": {
+      "description": "Stop NFS on Linux",
+      "steps": [
+        "Open terminal",
+        "Run: sudo systemctl stop nfs-server",
+        "Run: sudo systemctl disable nfs-server",
+        "Edit /etc/exports — remove all export lines or comment them out",
+        "Run: sudo exportfs -ra",
+        "Verify: sudo ss -tlnp | grep :2049"
+      ]
+    },
+    "pi": {
+      "description": "Stop NFS on Raspberry Pi",
+      "steps": [
+        "Run: sudo systemctl stop nfs-server",
+        "Run: sudo systemctl disable nfs-server",
+        "Clear /etc/exports if you added shares",
+        "Use SSH/SFTP for file access instead"
+      ]
+    }
+  },
+  "3306": {
+    "service": "MySQL/MariaDB",
+    "dangerous_reason": "Relational database with sensitive data. Exposed instances are scanned and brute-forced constantly. GDPR and credential databases are common exfiltration targets.",
+    "windows": {
+      "description": "Stop MySQL on Windows",
+      "steps": [
+        "Press Win+R, type 'services.msc', press Enter",
+        "Find 'MySQL' or 'MariaDB' service",
+        "Right-click → Properties → Startup type: Disabled → Stop",
+        "Block port 3306 in Windows Firewall"
+      ]
+    },
+    "linux": {
+      "description": "Stop MySQL on Linux",
+      "steps": [
+        "Open terminal",
+        "Run: sudo systemctl stop mysql",
+        "Run: sudo systemctl disable mysql",
+        "Or bind to 127.0.0.1 in /etc/mysql/mysql.conf.d/mysqld.cnf",
+        "Verify: sudo systemctl status mysql"
+      ]
+    },
+    "pi": {
+      "description": "Stop MySQL on Raspberry Pi",
+      "steps": [
+        "Run: sudo systemctl stop mysql",
+        "Run: sudo systemctl disable mysql",
+        "Use SQLite for Pi projects unless MySQL is essential",
+        "Verify: sudo systemctl status mysql"
+      ]
+    }
+  },
+  "3389": {
+    "service": "RDP (Remote Desktop)",
+    "dangerous_reason": "RDP brute-force and credential stuffing are among the top attack types (BlueKeep CVE-2019-0708 affected older systems). Exposed RDP gives full desktop control.",
+    "windows": {
+      "description": "Disable Remote Desktop on Windows",
+      "steps": [
+        "Press Win+Pause → 'Remote settings'",
+        "Select 'Don't allow remote connections to this computer'",
+        "Click Apply and OK",
+        "Settings → System → Remote Desktop → toggle Off"
+      ]
+    },
+    "linux": {
+      "description": "Stop RDP (xrdp) on Linux",
+      "steps": [
+        "Open terminal",
+        "Run: sudo systemctl stop xrdp",
+        "Run: sudo systemctl disable xrdp",
+        "Most Linux systems do not run RDP by default"
+      ]
+    },
+    "pi": {
+      "description": "RDP on Raspberry Pi",
+      "steps": [
+        "Pi uses VNC (5900), not RDP, by default",
+        "If xrdp installed: sudo systemctl stop xrdp && sudo systemctl disable xrdp",
+        "Disable VNC via: sudo raspi-config → Interface Options → VNC → Disable"
+      ]
+    }
+  },
+  "5432": {
+    "service": "PostgreSQL",
+    "dangerous_reason": "PostgreSQL database. Should NEVER be exposed to the internet. Automated scans exploit weak passwords and misconfigured pg_hba.conf for full data access.",
+    "windows": {
+      "description": "Stop PostgreSQL on Windows",
+      "steps": [
+        "Press Win+R, type 'services.msc', press Enter",
+        "Find 'postgresql-x64-XX' service",
+        "Right-click → Properties → Startup type: Disabled → Stop",
+        "Or edit postgresql.conf: listen_addresses = 'localhost'"
+      ]
+    },
+    "linux": {
+      "description": "Stop PostgreSQL on Linux",
+      "steps": [
+        "Open terminal",
+        "Run: sudo systemctl stop postgresql",
+        "Run: sudo systemctl disable postgresql",
+        "Edit postgresql.conf: listen_addresses = 'localhost'",
+        "Verify: sudo ss -tlnp | grep :5432"
+      ]
+    },
+    "pi": {
+      "description": "Stop PostgreSQL on Raspberry Pi",
+      "steps": [
+        "Run: sudo systemctl stop postgresql",
+        "Run: sudo systemctl disable postgresql",
+        "Bind to localhost only if your project requires PostgreSQL",
+        "Verify: sudo ss -tlnp | grep :5432"
+      ]
+    }
+  },
+  "5900": {
+    "service": "VNC (Virtual Network Computing)",
+    "dangerous_reason": "Remote desktop without adequate encryption by default on many implementations. Exposed VNC allows screen viewing and keyboard control — common brute-force target.",
+    "windows": {
+      "description": "Disable VNC on Windows",
+      "steps": [
+        "Open TightVNC/RealVNC/UltraVNC settings",
+        "Disable 'Accept incoming connections'",
+        "Press Win+R, type 'services.msc' → stop VNC Server service",
+        "Set Startup type to Disabled"
+      ]
+    },
+    "linux": {
+      "description": "Stop VNC on Linux",
+      "steps": [
+        "Open terminal",
+        "Run: sudo systemctl stop vncserver@:1",
+        "Run: sudo systemctl disable vncserver@:1",
+        "For RealVNC: sudo systemctl stop vncserver-x11-serviced"
+      ]
+    },
+    "pi": {
+      "description": "Disable VNC on Raspberry Pi",
+      "steps": [
+        "Run: sudo raspi-config",
+        "Interface Options → VNC → Disable",
+        "Exit raspi-config",
+        "Or: sudo systemctl stop vncserver-x11-serviced"
+      ]
+    }
+  },
+  "5984": {
+    "service": "CouchDB",
+    "dangerous_reason": "NoSQL document database. Exposed CouchDB with admin party mode allows all data to be read and written without authentication — mass data breaches occurred in 2017.",
+    "windows": {
+      "description": "Stop CouchDB on Windows",
+      "steps": [
+        "Press Win+R, type 'services.msc', press Enter",
+        "Find 'Apache CouchDB' service",
+        "Right-click → Properties → Startup type: Disabled → Stop",
+        "If running in Docker: docker stop <couchdb-container>"
+      ]
+    },
+    "linux": {
+      "description": "Stop CouchDB on Linux",
+      "steps": [
+        "Open terminal",
+        "Run: sudo systemctl stop couchdb",
+        "Run: sudo systemctl disable couchdb",
+        "Edit /opt/couchdb/etc/local.ini — bind to 127.0.0.1 only if needed locally",
+        "Verify: sudo ss -tlnp | grep :5984"
+      ]
+    },
+    "pi": {
+      "description": "Stop CouchDB on Raspberry Pi",
+      "steps": [
+        "Run: sudo systemctl stop couchdb",
+        "Run: sudo systemctl disable couchdb",
+        "Never expose CouchDB to the internet without authentication enabled",
+        "Verify: sudo ss -tlnp | grep :5984"
+      ]
+    }
+  },
+  "6379": {
+    "service": "Redis",
+    "dangerous_reason": "In-memory cache/database with no authentication by default. Complete data exposure and remote code execution via CONFIG command — used to deploy malware at scale.",
+    "windows": {
+      "description": "Stop Redis on Windows",
+      "steps": [
+        "Press Win+R, type 'services.msc', press Enter",
+        "Find 'Redis' service if installed",
+        "Set Startup type to Disabled → Stop",
+        "If in Docker: docker stop <redis-container> publishing 6379"
+      ]
+    },
+    "linux": {
+      "description": "Stop Redis on Linux",
+      "steps": [
+        "Open terminal",
+        "Run: sudo systemctl stop redis-server",
+        "Run: sudo systemctl disable redis-server",
+        "Edit /etc/redis/redis.conf: bind 127.0.0.1 and set requirepass",
+        "Verify: sudo ss -tlnp | grep :6379"
+      ]
+    },
+    "pi": {
+      "description": "Stop Redis on Raspberry Pi",
+      "steps": [
+        "Run: sudo systemctl stop redis-server",
+        "Run: sudo systemctl disable redis-server",
+        "Bind to localhost only if a local app needs Redis",
+        "Verify: sudo ss -tlnp | grep :6379"
+      ]
+    }
+  },
+  "8080": {
+    "service": "HTTP Alternate",
+    "dangerous_reason": "Alternative HTTP port with the same risk as port 80. Admin panels, proxies, and dev servers often use default credentials on this port.",
+    "windows": {
+      "description": "Stop HTTP services on port 8080",
+      "steps": [
+        "Run: netstat -ano | findstr :8080",
+        "Note the PID → Task Manager → Details → end process",
+        "Or disable the service in services.msc (Tomcat, Jenkins, etc.)",
+        "Do not port-forward 8080 from your router"
+      ]
+    },
+    "linux": {
+      "description": "Stop HTTP alt on Linux",
+      "steps": [
+        "Run: sudo ss -tlnp | grep :8080",
+        "Run: sudo systemctl stop <service-name> (tomcat, jenkins, etc.)",
+        "Run: sudo systemctl disable <service-name>",
+        "Bind dev servers to 127.0.0.1 only during development"
+      ]
+    },
+    "pi": {
+      "description": "Stop HTTP alt on Raspberry Pi",
+      "steps": [
+        "Run: sudo ss -tlnp | grep :8080",
+        "Stop the web dashboard or IoT service",
+        "Run: sudo systemctl disable <service-name>",
+        "Access admin tools locally only"
+      ]
+    }
+  },
+  "8443": {
+    "service": "HTTPS Alternate",
+    "dangerous_reason": "Alternative HTTPS port. Stop if unintended. If legitimate, restrict with firewall rules and enforce strong authentication on admin interfaces.",
+    "windows": {
+      "description": "Stop HTTPS alt on port 8443",
+      "steps": [
+        "Run: netstat -ano | findstr :8443",
+        "Stop the application in services.msc or Task Manager",
+        "Press Win+R, type 'wf.msc' → block inbound 8443 on public networks",
+        "Change default admin passwords on any device using this port"
+      ]
+    },
+    "linux": {
+      "description": "Stop HTTPS alt on Linux",
+      "steps": [
+        "Run: sudo ss -tlnp | grep :8443",
+        "Run: sudo systemctl stop <service-name>",
+        "Run: sudo systemctl disable <service-name>",
+        "Use ufw: sudo ufw deny 8443 or allow from LAN only"
+      ]
+    },
+    "pi": {
+      "description": "Stop HTTPS alt on Raspberry Pi",
+      "steps": [
+        "Run: sudo ss -tlnp | grep :8443",
+        "Stop and disable the listening service",
+        "Use VPN or local access instead of exposing 8443 to the internet"
+      ]
+    }
+  },
+  "9100": {
+    "service": "JetDirect (Network Printer)",
+    "dangerous_reason": "Raw printer port. If you do not have a network printer, disable it. Allows print job injection, firmware attacks, and lateral movement on corporate networks.",
+    "windows": {
+      "description": "Restrict printer port on Windows",
+      "steps": [
+        "Settings → Bluetooth & devices → Printers → disable sharing if not needed",
+        "Press Win+R, type 'wf.msc' → block port 9100 on public/guest networks",
+        "Update printer firmware from the manufacturer website",
+        "Do not port-forward 9100 from your router"
+      ]
+    },
+    "linux": {
+      "description": "Restrict CUPS/printer on Linux",
+      "steps": [
+        "Run: sudo ss -tlnp | grep :9100",
+        "Edit /etc/cups/cupsd.conf — restrict Listen and Allow to localhost or LAN",
+        "Run: sudo systemctl restart cups",
+        "Do not expose printer ports to the internet"
+      ]
+    },
+    "pi": {
+      "description": "Secure printer on Raspberry Pi",
+      "steps": [
+        "If Pi shares a printer via CUPS, restrict cupsd.conf to LAN only",
+        "Run: sudo systemctl restart cups",
+        "Do not port-forward 9100",
+        "Keep printer firmware updated"
+      ]
+    }
+  },
+  "9200": {
+    "service": "Elasticsearch",
+    "dangerous_reason": "Search and indexing engine. If exposed, all indexed data — often logs with credentials and PII — is readable. Ransomware groups target open Elasticsearch clusters.",
+    "windows": {
+      "description": "Stop Elasticsearch on Windows",
+      "steps": [
+        "Press Win+R, type 'services.msc', press Enter",
+        "Find 'Elasticsearch' service",
+        "Right-click → Properties → Startup type: Disabled → Stop",
+        "If in Docker: docker stop <elasticsearch-container>"
+      ]
+    },
+    "linux": {
+      "description": "Stop Elasticsearch on Linux",
+      "steps": [
+        "Open terminal",
+        "Run: sudo systemctl stop elasticsearch",
+        "Run: sudo systemctl disable elasticsearch",
+        "Edit elasticsearch.yml: network.host: 127.0.0.1 and enable xpack security",
+        "Verify: sudo ss -tlnp | grep :9200"
+      ]
+    },
+    "pi": {
+      "description": "Stop Elasticsearch on Raspberry Pi",
+      "steps": [
+        "Run: sudo systemctl stop elasticsearch",
+        "Run: sudo systemctl disable elasticsearch",
+        "Elasticsearch is heavy for Pi — use local SQLite or bind to localhost only",
+        "Verify: sudo ss -tlnp | grep :9200"
+      ]
+    }
+  },
+  "27017": {
+    "service": "MongoDB",
+    "dangerous_reason": "NoSQL database. Older versions had no authentication by default — thousands of databases were wiped in 2017. Full read/write access if exposed without auth.",
+    "windows": {
+      "description": "Stop MongoDB on Windows",
+      "steps": [
+        "Press Win+R, type 'services.msc', press Enter",
+        "Find 'MongoDB' service",
+        "Right-click → Properties → Startup type: Disabled → Stop",
+        "If in Docker: docker stop <mongodb-container>"
+      ]
+    },
+    "linux": {
+      "description": "Stop MongoDB on Linux",
+      "steps": [
+        "Open terminal",
+        "Run: sudo systemctl stop mongod",
+        "Run: sudo systemctl disable mongod",
+        "Edit /etc/mongod.conf: bindIp: 127.0.0.1 and enable authorization",
+        "Verify: sudo ss -tlnp | grep :27017"
+      ]
+    },
+    "pi": {
+      "description": "Stop MongoDB on Raspberry Pi",
+      "steps": [
+        "Run: sudo systemctl stop mongod",
+        "Run: sudo systemctl disable mongod",
+        "Use SQLite for Pi projects unless MongoDB is essential",
+        "Verify: sudo ss -tlnp | grep :27017"
+      ]
+    }
+  },
+  "50070": {
+    "service": "Hadoop NameNode",
+    "dangerous_reason": "Hadoop HDFS NameNode web UI. If exposed, attackers can browse and manipulate the entire data lake — used in big-data exfiltration and ransomware campaigns.",
+    "windows": {
+      "description": "Stop Hadoop on Windows",
+      "steps": [
+        "Hadoop on Windows is uncommon — check WSL or Docker",
+        "Run: netstat -ano | findstr :50070",
+        "Stop Hadoop services or Docker containers publishing 50070",
+        "Run stop-all.sh or stop-dfs.sh in Hadoop install directory if present"
+      ]
+    },
+    "linux": {
+      "description": "Stop Hadoop NameNode on Linux",
+      "steps": [
+        "Open terminal",
+        "Run: sudo ss -tlnp | grep :50070",
+        "Run: $HADOOP_HOME/sbin/stop-dfs.sh",
+        "Run: $HADOOP_HOME/sbin/stop-yarn.sh",
+        "Disable Hadoop services from starting at boot",
+        "Bind NameNode to localhost only in hdfs-site.xml if needed locally"
+      ]
+    },
+    "pi": {
+      "description": "Stop Hadoop on Raspberry Pi",
+      "steps": [
+        "Hadoop is rarely run on Pi in production",
+        "Run: sudo ss -tlnp | grep :50070",
+        "Stop the Hadoop or Docker service immediately",
+        "Do not expose big-data cluster ports to the internet"
+      ]
+    }
+  }
+}
