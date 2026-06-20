@@ -10,11 +10,12 @@ import type {
 } from "../types";
 import { PORT_FETCH_TIMEOUT_MS } from "../config";
 import { formatTimestamp } from "../utils/format";
-import { useSystemDetection } from "../hooks/useSystemDetection";
+import { useSystemDetection, instructionPlatform } from "../hooks/useSystemDetection";
 import StatusBadge from "../components/StatusBadge";
 import ConfirmModal from "../components/ConfirmModal";
 import BlockConfirmDialog from "../components/BlockConfirmDialog";
 import BlockHelpTooltip from "../components/BlockHelpTooltip";
+import PortInstructionsModal from "../components/PortInstructionsModal";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ScannerOffline from "../components/ScannerOffline";
 
@@ -31,6 +32,7 @@ export default function DeviceDetailPage() {
   const [trustModalOpen, setTrustModalOpen] = useState(false);
   const [blockModalOpen, setBlockModalOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [instructionsPort, setInstructionsPort] = useState<number | null>(null);
 
   const fetchDevice = useCallback(async () => {
     if (!ip) return;
@@ -255,19 +257,27 @@ export default function DeviceDetailPage() {
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[480px] text-left text-sm">
+            <table className="w-full min-w-[560px] text-left text-sm">
               <thead>
                 <tr className="border-b border-ng-border text-xs uppercase tracking-wider text-gray-500">
                   <th className="px-4 py-3 font-medium">Port</th>
                   <th className="px-4 py-3 font-medium">Service Name</th>
                   <th className="px-4 py-3 font-medium">Risk</th>
+                  <th className="px-4 py-3 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-ng-border">
                 {ports.map((port) => {
                   const dangerous = port.is_dangerous === 1;
                   return (
-                    <tr key={port.id} className="hover:bg-ng-elevated/50">
+                    <tr
+                      key={port.id}
+                      className={
+                        dangerous
+                          ? "bg-ng-alert/5 hover:bg-ng-alert/10"
+                          : "hover:bg-ng-elevated/50"
+                      }
+                    >
                       <td className="px-4 py-3 font-mono text-white">
                         {port.port}
                       </td>
@@ -291,6 +301,19 @@ export default function DeviceDetailPage() {
                             Safe
                           </span>
                         )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          type="button"
+                          onClick={() => setInstructionsPort(port.port)}
+                          className={`rounded-lg border px-3 py-1 text-xs font-semibold transition ${
+                            dangerous
+                              ? "border-ng-alert/40 bg-ng-alert/10 text-ng-alert hover:bg-ng-alert/20"
+                              : "border-ng-border bg-ng-elevated text-gray-300 hover:border-ng-accent/40 hover:text-ng-accent"
+                          }`}
+                        >
+                          How to fix
+                        </button>
                       </td>
                     </tr>
                   );
@@ -322,6 +345,13 @@ export default function DeviceDetailPage() {
         loading={actionLoading}
         onConfirm={handleBlockConfirm}
         onOpenChange={setBlockModalOpen}
+      />
+
+      <PortInstructionsModal
+        open={instructionsPort !== null}
+        port={instructionsPort}
+        defaultPlatform={instructionPlatform(systemType)}
+        onClose={() => setInstructionsPort(null)}
       />
     </div>
   );

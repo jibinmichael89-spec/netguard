@@ -56,6 +56,21 @@ export interface SecurityAlertsResponse {
   alerts: SecurityAlert[];
 }
 
+export interface InboundAttempt {
+  source_ip: string;
+  source_port: number;
+  destination_port: number;
+  severity: string;
+  timestamp: string;
+  description: string;
+}
+
+export interface InboundAttemptsResponse {
+  device_ip: string;
+  count: number;
+  inbound_attempts: InboundAttempt[];
+}
+
 export interface DnsQuery {
   id: number;
   timestamp: string;
@@ -86,6 +101,15 @@ export interface PortsResponse {
   device_ip: string;
   count: number;
   ports: OpenPort[];
+}
+
+export interface PortInstructionsResponse {
+  port: number;
+  service: string;
+  dangerous_reason: string;
+  platform: "windows" | "linux" | "pi";
+  description: string;
+  steps: string[];
 }
 
 export interface DangerousPortsResponse {

@@ -3,6 +3,7 @@ interface SeverityBadgeProps {
 }
 
 const SEVERITY_STYLES: Record<string, string> = {
+  CRITICAL: "bg-ng-alert/20 text-ng-alert border-ng-alert/40 animate-pulse-critical",
   Critical: "bg-ng-alert/20 text-ng-alert border-ng-alert/40 animate-pulse-critical",
   High: "bg-orange-500/20 text-orange-400 border-orange-500/40",
   Medium: "bg-ng-warning/20 text-ng-warning border-ng-warning/40",
