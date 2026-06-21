@@ -10,6 +10,11 @@ export interface Device {
   first_seen: string;
   last_seen: string;
   status: string;
+  os_guess: string | null;
+  os_confidence: "High" | "Medium" | "Low" | null;
+  device_category: string | null;
+  fingerprint_source: string | null;
+  last_fingerprint_at: string | null;
 }
 
 export interface DeviceTagResponse {
