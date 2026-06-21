@@ -51,7 +51,16 @@ export async function apiFetch<T>(
     });
 
     if (!response.ok) {
-      throw new ApiError(`Request failed: ${response.statusText}`, response.status);
+      let detail = response.statusText;
+      try {
+        const body = (await response.json()) as { detail?: string };
+        if (typeof body.detail === "string" && body.detail.trim()) {
+          detail = body.detail;
+        }
+      } catch {
+        /* response body was not JSON */
+      }
+      throw new ApiError(detail, response.status);
     }
 
     return (await response.json()) as T;

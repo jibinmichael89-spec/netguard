@@ -253,7 +253,8 @@ export default function DeviceDetailPage() {
           </p>
         ) : ports.length === 0 ? (
           <p className="px-4 py-8 text-center text-gray-500">
-            No open ports detected on this device.
+            No open ports detected yet. Port scans run automatically every 30
+            seconds with device discovery.
           </p>
         ) : (
           <div className="overflow-x-auto">

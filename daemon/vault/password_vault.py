@@ -23,8 +23,21 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 # Configuration
 # ---------------------------------------------------------------------------
 
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-DB_PATH = os.path.join(PROJECT_ROOT, "netguard.db")
+if getattr(sys, "frozen", False):
+    _daemon_dir = os.path.join(sys._MEIPASS, "daemon")
+else:
+    _daemon_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+if os.path.isdir(_daemon_dir) and _daemon_dir not in sys.path:
+    sys.path.insert(0, _daemon_dir)
+
+from db_path import resolve_db_path
+
+DB_PATH = resolve_db_path(
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    if not getattr(sys, "frozen", False)
+    else None
+)
 
 VERIFIER_PLAINTEXT = "NETGUARD_VAULT_OK"
 PBKDF2_ITERATIONS = 480_000

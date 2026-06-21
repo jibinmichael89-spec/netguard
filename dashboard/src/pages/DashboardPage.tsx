@@ -161,9 +161,16 @@ export default function DashboardPage() {
   }
 
   if (offline) {
+    const hint =
+      errorMessage?.includes("Database not found") ||
+      errorMessage?.includes("Start the ARP scanner")
+        ? " Start Menu → NetGuard → ARP Scanner, wait 30 seconds, then click Retry."
+        : errorMessage?.includes("Service Unavailable")
+          ? " Try http://127.0.0.1:8000 (not http://0.0.0.0:8000). Run ARP Scanner first."
+          : "";
     return (
       <ScannerOffline
-        message={errorMessage}
+        message={(errorMessage ?? "Unable to reach the NetGuard API.") + hint}
         onRetry={() => fetchData(true)}
       />
     );
@@ -187,6 +194,13 @@ export default function DashboardPage() {
           Real-time overview of your home network security
         </p>
       </div>
+
+      {devices.length === 0 && (
+        <div className="rounded-lg border border-ng-warning/30 bg-ng-warning/10 px-4 py-3 text-sm text-ng-warning">
+          Scanning your network now. Devices, open ports, and DNS activity will
+          appear automatically within about a minute.
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
