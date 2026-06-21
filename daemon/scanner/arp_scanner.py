@@ -47,6 +47,11 @@ DB_PATH = resolve_db_path(PROJECT_ROOT)
 
 # MAC vendor lookup API endpoint (free tier, rate-limited)
 MAC_VENDOR_API = "https://api.macvendors.com/{mac}"
+UNKNOWN_VENDOR = "Unknown"
+VENDOR_API_MIN_INTERVAL = 0.3
+
+_vendor_memory_cache: dict[str, str] = {}
+_last_vendor_api_call = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -123,22 +128,177 @@ def _detect_local_ip() -> str:
 # Device enrichment
 # ---------------------------------------------------------------------------
 
-def lookup_vendor(mac_address: str) -> str:
-    """
-    Look up the hardware vendor name from the MAC OUI database.
+def _normalize_mac(mac_address: str) -> str:
+    return mac_address.upper().replace("-", ":")
 
-    Queries macvendors.com via HTTP. Returns 'Unknown' on failure.
+
+def _is_unknown_value(value: str | None, unknown_sentinel: str = UNKNOWN_VENDOR) -> bool:
+    if value is None:
+        return True
+    stripped = value.strip()
+    return not stripped or stripped.lower() == unknown_sentinel.lower()
+
+
+def _preserve_known_value(
+    existing_value: str | None,
+    new_value: str | None,
+    unknown_sentinel: str = UNKNOWN_VENDOR,
+) -> str:
     """
+    Never downgrade a known-good value to an unknown sentinel.
+
+    Keeps the existing value when the new lookup failed but a prior value exists.
+    """
+    if _is_unknown_value(new_value, unknown_sentinel):
+        if not _is_unknown_value(existing_value, unknown_sentinel):
+            return existing_value.strip()
+        return unknown_sentinel
+    return (new_value or unknown_sentinel).strip()
+
+
+def _init_vendor_cache_table(db_path: str) -> None:
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS mac_vendor_cache (
+            mac_address TEXT PRIMARY KEY,
+            vendor      TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def _get_cached_vendor(db_path: str, mac_address: str) -> str | None:
+    """Return a cached vendor from memory or SQLite, skipping unknown entries."""
+    normalized = _normalize_mac(mac_address)
+
+    cached = _vendor_memory_cache.get(normalized)
+    if cached and not _is_unknown_value(cached):
+        return cached
+
+    conn = sqlite3.connect(db_path)
+    row = conn.execute(
+        "SELECT vendor FROM mac_vendor_cache WHERE mac_address = ?",
+        (normalized,),
+    ).fetchone()
+    conn.close()
+
+    if row and not _is_unknown_value(row[0]):
+        _vendor_memory_cache[normalized] = row[0]
+        return row[0]
+
+    return None
+
+
+def _store_vendor_cache(db_path: str, mac_address: str, vendor: str) -> None:
+    if _is_unknown_value(vendor):
+        return
+
+    normalized = _normalize_mac(mac_address)
+    _vendor_memory_cache[normalized] = vendor
+
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        INSERT INTO mac_vendor_cache (mac_address, vendor, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(mac_address) DO UPDATE SET
+            vendor = excluded.vendor,
+            updated_at = excluded.updated_at
+        """,
+        (normalized, vendor, datetime.now(timezone.utc).isoformat()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _get_device_vendor(db_path: str, mac_address: str) -> str | None:
+    normalized = _normalize_mac(mac_address)
+    conn = sqlite3.connect(db_path)
+    row = conn.execute(
+        """
+        SELECT vendor FROM devices
+        WHERE REPLACE(UPPER(mac_address), '-', ':') = ?
+        """,
+        (normalized,),
+    ).fetchone()
+    conn.close()
+    if row and not _is_unknown_value(row[0]):
+        return row[0]
+    return None
+
+
+def _fetch_vendor_from_api(mac_address: str) -> str | None:
+    """
+    Query macvendors.com with basic rate limiting.
+
+    Returns None when the remote lookup fails or is rate-limited so callers can
+    fall back to cached values instead of writing Unknown.
+    """
+    global _last_vendor_api_call
+
+    normalized = _normalize_mac(mac_address)
+    elapsed = time.time() - _last_vendor_api_call
+    if elapsed < VENDOR_API_MIN_INTERVAL:
+        time.sleep(VENDOR_API_MIN_INTERVAL - elapsed)
+
     try:
         response = requests.get(
-            MAC_VENDOR_API.format(mac=mac_address),
+            MAC_VENDOR_API.format(mac=normalized),
             timeout=5,
+            headers={"User-Agent": "NetGuard/1.0"},
         )
+        _last_vendor_api_call = time.time()
+
+        if response.status_code == 429:
+            return None
+
         if response.status_code == 200 and response.text.strip():
             return response.text.strip()
     except requests.RequestException:
-        pass
-    return "Unknown"
+        _last_vendor_api_call = time.time()
+
+    return None
+
+
+def lookup_vendor(mac_address: str, db_path: str | None = None) -> str:
+    """
+    Look up the hardware vendor name from the MAC OUI database.
+
+    Uses an in-memory cache, SQLite cache, and existing device records before
+    calling the remote API. Failed lookups fall back to cached values instead
+    of overwriting known vendors with Unknown.
+    """
+    normalized = _normalize_mac(mac_address)
+
+    if db_path:
+        cached = _get_cached_vendor(db_path, normalized)
+        if cached:
+            return cached
+
+        existing = _get_device_vendor(db_path, normalized)
+        if existing:
+            _vendor_memory_cache[normalized] = existing
+            return existing
+
+    vendor = _fetch_vendor_from_api(normalized)
+    if vendor:
+        if db_path:
+            _store_vendor_cache(db_path, normalized, vendor)
+        return vendor
+
+    if db_path:
+        cached = _get_cached_vendor(db_path, normalized)
+        if cached:
+            return cached
+        existing = _get_device_vendor(db_path, normalized)
+        if existing:
+            return existing
+
+    return UNKNOWN_VENDOR
 
 
 def lookup_hostname(ip_address: str) -> str | None:
@@ -184,10 +344,6 @@ def _is_valid_mac(mac_raw: str) -> bool:
     if len(parts) != 6:
         return False
     return all(len(part) == 2 and all(c in "0123456789ABCDEF" for c in part) for part in parts)
-
-
-def _normalize_mac(mac_raw: str) -> str:
-    return mac_raw.replace("-", ":").upper()
 
 
 def _read_windows_arp_table(network: ipaddress.IPv4Network) -> list[dict]:
@@ -303,6 +459,7 @@ def arp_scan(subnet: str, timeout: int = 3) -> list[dict]:
 def init_database(db_path: str) -> None:
     """Create the devices table if it does not already exist."""
     init_netguard_database(db_path)
+    _init_vendor_cache_table(db_path)
 
 def get_known_macs(db_path: str) -> set[str]:
     """Return the set of all MAC addresses currently stored in the database."""
@@ -331,7 +488,7 @@ def upsert_device(
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT id FROM devices WHERE mac_address = ?",
+        "SELECT id, vendor FROM devices WHERE mac_address = ?",
         (mac_address,),
     )
     existing = cursor.fetchone()
@@ -349,6 +506,7 @@ def upsert_device(
         conn.close()
         return True
 
+    vendor = _preserve_known_value(existing[1], vendor)
     cursor.execute(
         """
         UPDATE devices
@@ -503,7 +661,7 @@ def run_scan_cycle(db_path: str, subnet: str) -> None:
         ip = raw["ip_address"]
         seen_macs.add(mac)
 
-        vendor = lookup_vendor(mac)
+        vendor = lookup_vendor(mac, db_path)
         hostname = lookup_hostname(ip)
 
         is_new = upsert_device(db_path, ip, mac, vendor, hostname, timestamp)
