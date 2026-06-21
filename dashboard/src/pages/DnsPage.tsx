@@ -81,6 +81,21 @@ export default function DnsPage() {
     );
   }
 
+  if (queries.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold text-white">DNS Activity</h2>
+          <p className="mt-1 text-sm text-gray-400">
+            No DNS lookups recorded yet. Browse a few websites on this PC, then
+            wait for the next scan cycle (about 30 seconds). On Windows, DNS
+            shows lookups from this computer.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div>

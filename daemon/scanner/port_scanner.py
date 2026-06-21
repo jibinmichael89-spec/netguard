@@ -1,18 +1,27 @@
-"""
-NetGuard Port Scanner
-Scans all known devices for open ports and flags dangerous services.
-"""
+"""TCP port scanning for discovered network devices."""
 
+from __future__ import annotations
+
+import os
 import socket
 import sqlite3
-import time
+import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
-DB_PATH = "netguard.db"
-SCAN_INTERVAL = 300  # 5 minutes
-TIMEOUT = 1.0
+if getattr(sys, "frozen", False):
+    _daemon_dir = os.path.join(sys._MEIPASS, "daemon")
+else:
+    _daemon_dir = os.path.join(os.path.dirname(__file__), "..")
 
-# Ports to scan and their service names
+if os.path.isdir(_daemon_dir) and _daemon_dir not in sys.path:
+    sys.path.insert(0, _daemon_dir)
+
+from database import init_netguard_database
+
+SCAN_TIMEOUT = 0.4
+MAX_WORKERS = 32
+
 PORTS_TO_SCAN = {
     21: "FTP",
     22: "SSH",
@@ -20,48 +29,75 @@ PORTS_TO_SCAN = {
     25: "SMTP",
     53: "DNS",
     80: "HTTP",
+    139: "NetBIOS",
     443: "HTTPS",
     445: "SMB",
     554: "RTSP",
+    873: "Rsync",
+    1433: "MSSQL",
+    1521: "Oracle",
     1900: "UPNP",
+    2049: "NFS",
+    3306: "MySQL",
     3389: "RDP",
-    5000: "UPNP-Dev",
+    5432: "PostgreSQL",
+    5900: "VNC",
+    5984: "CouchDB",
+    6379: "Redis",
     8080: "HTTP-Alt",
     8443: "HTTPS-Alt",
     9100: "Printer",
+    9200: "Elasticsearch",
+    27017: "MongoDB",
+    50070: "Hadoop",
 }
 
-# Dangerous ports and why
 DANGEROUS_PORTS = {
-    23: "Unencrypted remote access protocol - high hijack risk",
     21: "Unencrypted file transfer - credentials sent in plaintext",
+    23: "Unencrypted remote access protocol - high hijack risk",
     445: "Common ransomware attack vector",
     3389: "Common brute force target if exposed",
     1900: "Often exploited for DDoS amplification",
+    5900: "Remote desktop often targeted when exposed",
+    6379: "Redis often left unauthenticated on the internet",
 }
 
 
-def init_db():
-    """Create the open_ports table if it doesn't exist."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS open_ports (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            device_ip TEXT NOT NULL,
-            port INTEGER NOT NULL,
-            service_name TEXT,
-            is_dangerous INTEGER DEFAULT 0,
-            risk_reason TEXT,
-            scanned_at TEXT NOT NULL
-        )
-    """)
-    conn.commit()
-    conn.close()
+def _scan_port(ip: str, port: int) -> tuple[int, bool]:
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(SCAN_TIMEOUT)
+        open_port = sock.connect_ex((ip, port)) == 0
+        sock.close()
+        return port, open_port
+    except OSError:
+        return port, False
 
 
-def get_online_devices():
-    """Fetch all currently online device IPs from the devices table."""
-    conn = sqlite3.connect(DB_PATH)
+def _scan_device(ip: str) -> list[dict]:
+    open_ports: list[dict] = []
+    with ThreadPoolExecutor(max_workers=min(len(PORTS_TO_SCAN), MAX_WORKERS)) as pool:
+        futures = {
+            pool.submit(_scan_port, ip, port): port for port in PORTS_TO_SCAN
+        }
+        for future in as_completed(futures):
+            port, is_open = future.result()
+            if not is_open:
+                continue
+            open_ports.append(
+                {
+                    "port": port,
+                    "service": PORTS_TO_SCAN[port],
+                    "is_dangerous": 1 if port in DANGEROUS_PORTS else 0,
+                    "risk_reason": DANGEROUS_PORTS.get(port, ""),
+                }
+            )
+    open_ports.sort(key=lambda item: item["port"])
+    return open_ports
+
+
+def _get_online_devices(db_path: str) -> list[str]:
+    conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
         "SELECT ip_address FROM devices WHERE status = 'online'"
@@ -70,89 +106,47 @@ def get_online_devices():
     return [row["ip_address"] for row in rows]
 
 
-def scan_port(ip, port):
-    """Try to open a TCP connection to ip:port. Return True if open."""
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(TIMEOUT)
-        result = sock.connect_ex((ip, port))
-        sock.close()
-        return result == 0
-    except Exception:
-        return False
-
-
-def scan_device(ip):
-    """Scan all configured ports on a single device. Return list of open ports."""
-    open_ports = []
-    for port, service in PORTS_TO_SCAN.items():
-        if scan_port(ip, port):
-            is_dangerous = 1 if port in DANGEROUS_PORTS else 0
-            risk_reason = DANGEROUS_PORTS.get(port, "")
-            open_ports.append({
-                "port": port,
-                "service": service,
-                "is_dangerous": is_dangerous,
-                "risk_reason": risk_reason
-            })
-    return open_ports
-
-
-def save_results(ip, open_ports):
-    """Clear old results for this device and save fresh scan results."""
-    conn = sqlite3.connect(DB_PATH)
+def _save_results(db_path: str, ip: str, open_ports: list[dict]) -> None:
+    conn = sqlite3.connect(db_path)
     timestamp = datetime.now(timezone.utc).isoformat()
-
-    # Clear stale entries for this device
     conn.execute("DELETE FROM open_ports WHERE device_ip = ?", (ip,))
-
-    for p in open_ports:
-        conn.execute("""
-            INSERT INTO open_ports (device_ip, port, service_name, is_dangerous, risk_reason, scanned_at)
+    for entry in open_ports:
+        conn.execute(
+            """
+            INSERT INTO open_ports
+                (device_ip, port, service_name, is_dangerous, risk_reason, scanned_at)
             VALUES (?, ?, ?, ?, ?, ?)
-        """, (ip, p["port"], p["service"], p["is_dangerous"], p["risk_reason"], timestamp))
-
+            """,
+            (
+                ip,
+                entry["port"],
+                entry["service"],
+                entry["is_dangerous"],
+                entry["risk_reason"],
+                timestamp,
+            ),
+        )
     conn.commit()
     conn.close()
 
 
-def run_scan_cycle():
-    """Scan every online device and print a clean results table."""
-    devices = get_online_devices()
-    print(f"\n[*] Starting port scan cycle — {len(devices)} online devices")
-    print(f"{'Device IP':<16} {'Port':<6} {'Service':<12} {'Risk'}")
-    print("-" * 70)
+def run_port_scan_cycle(db_path: str) -> int:
+    """Scan online devices for open TCP ports. Returns total open ports found."""
+    init_netguard_database(db_path)
+    devices = _get_online_devices(db_path)
+    if not devices:
+        print("[*] Port scan skipped - no online devices.")
+        return 0
 
+    print(f"[*] Port scan starting for {len(devices)} online device(s) ...")
+    total_open = 0
     for ip in devices:
-        open_ports = scan_device(ip)
-        save_results(ip, open_ports)
+        open_ports = _scan_device(ip)
+        _save_results(db_path, ip, open_ports)
+        total_open += len(open_ports)
+        if open_ports:
+            summary = ", ".join(str(entry["port"]) for entry in open_ports)
+            print(f"    {ip}: {len(open_ports)} open ({summary})")
 
-        if not open_ports:
-            continue
-
-        for p in open_ports:
-            risk = "DANGEROUS" if p["is_dangerous"] else "ok"
-            print(f"{ip:<16} {p['port']:<6} {p['service']:<12} {risk}")
-
-    print(f"[*] Scan cycle complete. Next scan in {SCAN_INTERVAL} seconds.\n")
-
-
-def main():
-    print("NetGuard Port Scanner starting...")
-    print(f"Database: {DB_PATH}")
-    print(f"Scan interval: {SCAN_INTERVAL}s")
-    print(f"Ports scanned per device: {list(PORTS_TO_SCAN.keys())}")
-    print("Press Ctrl+C to stop.\n")
-
-    init_db()
-
-    try:
-        while True:
-            run_scan_cycle()
-            time.sleep(SCAN_INTERVAL)
-    except KeyboardInterrupt:
-        print("\n[*] Port scanner stopped by user.")
-
-
-if __name__ == "__main__":
-    main()
+    print(f"[*] Port scan complete - {total_open} open port(s) across network.")
+    return total_open

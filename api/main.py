@@ -17,7 +17,17 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-sys.path.insert(0, os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")), "daemon", "vault"))
+if getattr(sys, "frozen", False):
+    PROJECT_ROOT = os.path.dirname(sys.executable)
+    BUNDLE_ROOT = sys._MEIPASS
+else:
+    PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    BUNDLE_ROOT = PROJECT_ROOT
+
+_vault_dir = os.path.join(BUNDLE_ROOT, "daemon", "vault")
+if os.path.isdir(_vault_dir) and _vault_dir not in sys.path:
+    sys.path.insert(0, _vault_dir)
+
 from password_vault import (
     add_credential,
     calculate_strength,
@@ -28,14 +38,6 @@ from password_vault import (
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-
-# Path to the shared SQLite database (project root)
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-DB_PATH = os.path.join(PROJECT_ROOT, "netguard.db")
-PORT_INSTRUCTIONS_PATH = os.path.join(
-    PROJECT_ROOT, "daemon", "data", "port_instructions.json"
-)
-VALID_INSTRUCTION_PLATFORMS = frozenset({"windows", "linux", "pi"})
 
 # How far back to look when reporting "new" devices (hours)
 NEW_DEVICE_WINDOW_HOURS = 24
@@ -50,6 +52,20 @@ DOMAIN_CATEGORIES = {
     "Apple services": ("apple", "icloud", "itunes"),
     "Microsoft": ("microsoft", "windows", "azure"),
 }
+
+VALID_INSTRUCTION_PLATFORMS = frozenset({"windows", "linux", "pi"})
+
+_db_module_dir = os.path.join(BUNDLE_ROOT, "daemon")
+if os.path.isdir(_db_module_dir) and _db_module_dir not in sys.path:
+    sys.path.insert(0, _db_module_dir)
+
+from db_path import resolve_db_path
+from database import init_netguard_database
+
+DB_PATH = resolve_db_path(PROJECT_ROOT if not getattr(sys, "frozen", False) else None)
+PORT_INSTRUCTIONS_PATH = os.path.join(
+    BUNDLE_ROOT, "daemon", "data", "port_instructions.json"
+)
 
 # ---------------------------------------------------------------------------
 # FastAPI application
@@ -73,17 +89,17 @@ app.add_middleware(
 
 
 def get_db_connection() -> sqlite3.Connection:
-    """
-    Open a connection to the NetGuard SQLite database.
-
-    Raises HTTP 503 if the database file does not exist yet (scanner
-    has not run).
-    """
-    if not os.path.exists(DB_PATH):
+    """Open a connection to the NetGuard SQLite database."""
+    try:
+        init_netguard_database(DB_PATH)
+    except OSError as exc:
         raise HTTPException(
             status_code=503,
-            detail="Database not found. Start the ARP scanner first.",
-        )
+            detail=(
+                f"Cannot create database at {DB_PATH}: {exc}. "
+                "Run ARP Scanner as your user account, or set NETGUARD_DB_PATH."
+            ),
+        ) from exc
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     _ensure_device_tag_column(conn)
@@ -127,6 +143,11 @@ def _ensure_device_trust_columns(conn: sqlite3.Connection) -> None:
 def _ensure_inbound_alert_columns(conn: sqlite3.Connection) -> None:
     """Add inbound connection columns to alerts table if missing."""
     cursor = conn.cursor()
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='alerts'"
+    )
+    if cursor.fetchone() is None:
+        return
     cursor.execute("PRAGMA table_info(alerts)")
     columns = {row[1] for row in cursor.fetchall()}
     changed = False
@@ -854,10 +875,26 @@ def vault_delete(credential_id: int) -> dict:
 
 
 # Serve static dashboard files (registered after API routes)
-dashboard_path = os.path.join(PROJECT_ROOT, "api", "static")
-assets_path = os.path.join(dashboard_path, "assets")
+def _resolve_dashboard_path() -> str | None:
+    candidates = [
+        os.path.join(BUNDLE_ROOT, "api", "static"),
+        os.path.join(PROJECT_ROOT, "api", "static"),
+    ]
+    seen: set[str] = set()
+    for path in candidates:
+        normalized = os.path.abspath(path)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        if os.path.isfile(os.path.join(normalized, "index.html")):
+            return normalized
+    return None
 
-if os.path.exists(dashboard_path):
+
+dashboard_path = _resolve_dashboard_path()
+assets_path = os.path.join(dashboard_path, "assets") if dashboard_path else ""
+
+if dashboard_path:
 
     @app.get("/")
     async def serve_dashboard() -> FileResponse:
@@ -873,13 +910,48 @@ if os.path.exists(dashboard_path):
     @app.get("/icons.svg")
     async def serve_icons() -> FileResponse:
         return FileResponse(os.path.join(dashboard_path, "icons.svg"))
+else:
+    print(
+        "WARNING: Dashboard files not found in the application bundle. "
+        "Rebuild NetGuard-API.exe with the dashboard static assets included."
+    )
+
+
+@app.get("/health")
+def health_check() -> dict:
+    """Simple health probe for troubleshooting installs."""
+    return {
+        "status": "ok",
+        "database_path": DB_PATH,
+        "database_exists": os.path.exists(DB_PATH),
+        "dashboard_bundled": dashboard_path is not None,
+        "dashboard_url": "http://127.0.0.1:8000/",
+    }
 
 
 # ---------------------------------------------------------------------------
 # Direct execution (development)
 # ---------------------------------------------------------------------------
 
+DASHBOARD_URL = "http://127.0.0.1:8000"
+
+
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    if getattr(sys, "frozen", False):
+        if not os.path.exists(DB_PATH):
+            init_netguard_database(DB_PATH)
+        print(f"NetGuard API using database: {DB_PATH}")
+        print("")
+        print("=" * 52)
+        print("  NetGuard is running!")
+        print(f"  Open your browser to: {DASHBOARD_URL}")
+        print("  Tip: use the NetGuard shortcut to open the dashboard.")
+        print("=" * 52)
+        print("")
+        if dashboard_path is None:
+            print("ERROR: Dashboard UI was not bundled into this executable.")
+        uvicorn.run(app, host="0.0.0.0", port=8000)
+    else:
+        uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
