@@ -7,11 +7,11 @@ import {
 } from "lucide-react";
 import { apiFetch } from "../api";
 import type {
-  DangerousPortsResponse,
   Device,
   DeviceBlockResponse,
   DeviceTrustResponse,
   DevicesResponse,
+  RiskSummaryResponse,
 } from "../types";
 import { DASHBOARD_REFRESH_MS, NEW_DEVICE_WINDOW_HOURS } from "../config";
 import { isRecentlyAdded } from "../utils/format";
@@ -32,7 +32,6 @@ const FILTER_LABELS: Record<Exclude<DeviceFilterType, null>, string> = {
 function filterDevices(
   devices: Device[],
   filterType: DeviceFilterType,
-  dangerousIps: Set<string>,
 ): Device[] {
   if (filterType === null) {
     return devices;
@@ -47,7 +46,10 @@ function filterDevices(
       isRecentlyAdded(device.first_seen, NEW_DEVICE_WINDOW_HOURS),
     );
   }
-  return devices.filter((device) => dangerousIps.has(device.ip_address));
+  return devices.filter(
+    (device) =>
+      device.risk_level === "Critical" || device.risk_level === "High",
+  );
 }
 
 function unblockedDevices(devices: Device[]): Device[] {
@@ -56,8 +58,9 @@ function unblockedDevices(devices: Device[]): Device[] {
 
 export default function DashboardPage() {
   const [devices, setDevices] = useState<DevicesResponse["devices"]>([]);
-  const [dangerousIps, setDangerousIps] = useState<Set<string>>(new Set());
-  const [dangerousCount, setDangerousCount] = useState(0);
+  const [riskSummary, setRiskSummary] = useState<RiskSummaryResponse | null>(
+    null,
+  );
   const [filterType, setFilterType] = useState<DeviceFilterType>(null);
   const [showBlockedDevices, setShowBlockedDevices] = useState(false);
   const [search, setSearch] = useState("");
@@ -71,15 +74,12 @@ export default function DashboardPage() {
   const fetchData = useCallback(async (isInitial = false) => {
     if (isInitial) setLoading(true);
     try {
-      const [devicesRes, dangerousRes] = await Promise.all([
+      const [devicesRes, riskRes] = await Promise.all([
         apiFetch<DevicesResponse>("/devices?include_blocked=true"),
-        apiFetch<DangerousPortsResponse>("/ports/dangerous"),
+        apiFetch<RiskSummaryResponse>("/risk/summary"),
       ]);
       setDevices(devicesRes.devices);
-      setDangerousCount(dangerousRes.count);
-      setDangerousIps(
-        new Set(dangerousRes.dangerous_ports.map((port) => port.device_ip)),
-      );
+      setRiskSummary(riskRes);
       setOffline(false);
       setErrorMessage(undefined);
     } catch (error) {
@@ -106,8 +106,8 @@ export default function DashboardPage() {
   );
 
   const filteredDevices = useMemo(
-    () => filterDevices(visibleDevices, filterType, dangerousIps),
-    [visibleDevices, filterType, dangerousIps],
+    () => filterDevices(visibleDevices, filterType),
+    [visibleDevices, filterType],
   );
 
   const toggleFilter = (type: Exclude<DeviceFilterType, null>) => {
@@ -186,6 +186,12 @@ export default function DashboardPage() {
     (device) => (device.is_blocked ?? 0) === 1,
   ).length;
 
+  const criticalCount = riskSummary?.critical_count ?? 0;
+  const highCount = riskSummary?.high_count ?? 0;
+  const mediumCount = riskSummary?.medium_count ?? 0;
+  const highRiskHeadline = criticalCount + highCount;
+  const riskBreakdownSubtitle = `${criticalCount} Critical, ${highCount} High, ${mediumCount} Medium`;
+
   return (
     <div className="space-y-6">
       <div>
@@ -229,9 +235,10 @@ export default function DashboardPage() {
         />
         <StatCard
           label="Security Findings"
-          value={dangerousCount}
+          value={highRiskHeadline}
+          subtitle={riskBreakdownSubtitle}
           icon={<ShieldAlert className="h-5 w-5" />}
-          accent={dangerousCount > 0 ? "alert" : "safe"}
+          accent={highRiskHeadline > 0 ? "alert" : "safe"}
           onClick={() => toggleFilter("dangerous")}
           active={filterType === "dangerous"}
         />

@@ -1,0 +1,60 @@
+{
+  "last_updated": "2026-06-21T14:24:54.268557+00:00",
+  "port_445": {
+    "keywords": [
+      "SMB vulnerability",
+      "EternalBlue"
+    ],
+    "examples": [
+      {
+        "cve_id": "CVE-2002-1342",
+        "description": "Unknown vulnerability in smb2www 980804-16 and earlier allows remote attackers to execute arbitrary commands.",
+        "published": "2002-12-18",
+        "severity": null
+      },
+      {
+        "cve_id": "CVE-2001-1162",
+        "description": "Directory traversal vulnerability in the %m macro in the smb.conf configuration file in Samba before 2.2.0a allows remote attackers to overwrite certain files via a .. in a NETBIOS name, which is u...",
+        "published": "2001-06-23",
+        "severity": null
+      },
+      {
+        "cve_id": "CVE-2000-0885",
+        "description": "Buffer overflows in Microsoft Network Monitor (Netmon) allow remote attackers to execute arbitrary commands via a long Browser Name in a CIFS Browse Frame, a long SNMP community name, or a long use...",
+        "published": "2000-12-19",
+        "severity": null
+      }
+    ]
+  },
+  "port_3389": {
+    "keywords": [
+      "RDP vulnerability",
+      "BlueKeep"
+    ],
+    "examples": []
+  },
+  "port_23": {
+    "keywords": [
+      "Telnet vulnerability"
+    ],
+    "examples": []
+  },
+  "port_1433": {
+    "keywords": [
+      "MSSQL vulnerability"
+    ],
+    "examples": []
+  },
+  "port_6379": {
+    "keywords": [
+      "Redis vulnerability"
+    ],
+    "examples": []
+  },
+  "port_27017": {
+    "keywords": [
+      "MongoDB vulnerability"
+    ],
+    "examples": []
+  }
+}
