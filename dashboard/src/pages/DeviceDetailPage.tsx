@@ -3,9 +3,11 @@ import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Check, ShieldBan, ShieldCheck } from "lucide-react";
 import { apiFetch, apiFetchWithTimeout } from "../api";
 import type {
+  Device,
   DeviceBlockResponse,
   DevicesResponse,
   DeviceTrustResponse,
+  PortRiskLevel,
   PortsResponse,
 } from "../types";
 import { PORT_FETCH_TIMEOUT_MS } from "../config";
@@ -16,21 +18,30 @@ import ConfirmModal from "../components/ConfirmModal";
 import BlockConfirmDialog from "../components/BlockConfirmDialog";
 import BlockHelpTooltip from "../components/BlockHelpTooltip";
 import PortInstructionsModal from "../components/PortInstructionsModal";
+import RiskDetailModal, { PortRiskBadge, RiskBadge } from "../components/RiskDetailModal";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ScannerOffline from "../components/ScannerOffline";
+
+function resolvePortRiskLevel(
+  port: PortsResponse["ports"][number],
+): PortRiskLevel {
+  if (port.port_risk_level) {
+    return port.port_risk_level;
+  }
+  return port.is_dangerous === 1 ? "High" : "Safe";
+}
 
 export default function DeviceDetailPage() {
   const { ip } = useParams<{ ip: string }>();
   const { systemType } = useSystemDetection();
-  const [device, setDevice] = useState<DevicesResponse["devices"][0] | null>(
-    null,
-  );
+  const [device, setDevice] = useState<Device | null>(null);
   const [ports, setPorts] = useState<PortsResponse["ports"]>([]);
   const [portsError, setPortsError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
   const [trustModalOpen, setTrustModalOpen] = useState(false);
   const [blockModalOpen, setBlockModalOpen] = useState(false);
+  const [riskModalOpen, setRiskModalOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [instructionsPort, setInstructionsPort] = useState<number | null>(null);
 
@@ -173,7 +184,13 @@ export default function DeviceDetailPage() {
               )}
             </div>
           </div>
-          <StatusBadge status={device.status} />
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge status={device.status} />
+            <RiskBadge
+              level={device.risk_level}
+              onClick={() => setRiskModalOpen(true)}
+            />
+          </div>
         </div>
 
         <div className="mt-6 flex flex-wrap gap-3">
@@ -270,11 +287,17 @@ export default function DeviceDetailPage() {
               <tbody className="divide-y divide-ng-border">
                 {ports.map((port) => {
                   const dangerous = port.is_dangerous === 1;
+                  const portRiskLevel = resolvePortRiskLevel(port);
+                  const elevatedPortRisk =
+                    portRiskLevel === "Critical" ||
+                    portRiskLevel === "High" ||
+                    portRiskLevel === "Medium";
+
                   return (
                     <tr
                       key={port.id}
                       className={
-                        dangerous
+                        elevatedPortRisk || dangerous
                           ? "bg-ng-alert/5 hover:bg-ng-alert/10"
                           : "hover:bg-ng-elevated/50"
                       }
@@ -286,22 +309,14 @@ export default function DeviceDetailPage() {
                         {port.service_name ?? "—"}
                       </td>
                       <td className="px-4 py-3">
-                        {dangerous ? (
-                          <div>
-                            <span className="rounded bg-ng-alert/20 px-2 py-0.5 text-xs font-bold uppercase text-ng-alert">
-                              Dangerous
-                            </span>
-                            {port.risk_reason && (
-                              <p className="mt-1 text-xs text-gray-400">
-                                {port.risk_reason}
-                              </p>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="rounded bg-ng-safe/20 px-2 py-0.5 text-xs font-bold uppercase text-ng-safe">
-                            Safe
-                          </span>
-                        )}
+                        <div>
+                          <PortRiskBadge level={portRiskLevel} />
+                          {port.risk_reason && (
+                            <p className="mt-1 text-xs text-gray-400">
+                              {port.risk_reason}
+                            </p>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <button
@@ -346,6 +361,11 @@ export default function DeviceDetailPage() {
         loading={actionLoading}
         onConfirm={handleBlockConfirm}
         onOpenChange={setBlockModalOpen}
+      />
+
+      <RiskDetailModal
+        device={riskModalOpen ? device : null}
+        onClose={() => setRiskModalOpen(false)}
       />
 
       <PortInstructionsModal

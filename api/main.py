@@ -66,6 +66,12 @@ DB_PATH = resolve_db_path(PROJECT_ROOT if not getattr(sys, "frozen", False) else
 PORT_INSTRUCTIONS_PATH = os.path.join(
     BUNDLE_ROOT, "daemon", "data", "port_instructions.json"
 )
+RISK_RULES_PATH = os.path.join(BUNDLE_ROOT, "daemon", "data", "risk_rules.json")
+NVD_REFERENCE_CACHE_PATH = os.path.join(
+    BUNDLE_ROOT, "daemon", "data", "nvd_reference_cache.json"
+)
+
+_RISK_RULES: dict = {}
 
 # ---------------------------------------------------------------------------
 # FastAPI application
@@ -88,6 +94,27 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+def _preload_risk_rules() -> None:
+    """Load port risk weights once at startup for open-port API responses."""
+    global _RISK_RULES
+    if not os.path.exists(RISK_RULES_PATH):
+        print(f"[!] Risk rules file not found: {RISK_RULES_PATH}")
+        _RISK_RULES = {}
+        return
+    try:
+        with open(RISK_RULES_PATH, encoding="utf-8") as handle:
+            _RISK_RULES = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"[!] Failed to load risk rules: {exc}")
+        _RISK_RULES = {}
+
+
+def get_risk_rules() -> dict:
+    """Return cached risk rules loaded at startup."""
+    return _RISK_RULES
+
+
 def get_db_connection() -> sqlite3.Connection:
     """Open a connection to the NetGuard SQLite database."""
     try:
@@ -105,6 +132,7 @@ def get_db_connection() -> sqlite3.Connection:
     _ensure_device_tag_column(conn)
     _ensure_device_trust_columns(conn)
     _ensure_fingerprint_columns(conn)
+    _ensure_risk_columns(conn)
     _ensure_inbound_alert_columns(conn)
     return conn
 
@@ -164,6 +192,28 @@ def _ensure_fingerprint_columns(conn: sqlite3.Connection) -> None:
         conn.commit()
 
 
+def _ensure_risk_columns(conn: sqlite3.Connection) -> None:
+    """Add device risk scoring columns to devices table if missing."""
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(devices)")
+    columns = {row[1] for row in cursor.fetchall()}
+    changed = False
+    risk_columns = {
+        "risk_score": "INTEGER",
+        "risk_level": "TEXT",
+        "risk_factors": "TEXT",
+        "risk_calculated_at": "TEXT",
+    }
+    for column_name, column_type in risk_columns.items():
+        if column_name not in columns:
+            cursor.execute(
+                f"ALTER TABLE devices ADD COLUMN {column_name} {column_type}"
+            )
+            changed = True
+    if changed:
+        conn.commit()
+
+
 def _ensure_inbound_alert_columns(conn: sqlite3.Connection) -> None:
     """Add inbound connection columns to alerts table if missing."""
     cursor = conn.cursor()
@@ -193,12 +243,54 @@ def rows_to_dicts(rows: list[sqlite3.Row]) -> list[dict]:
     return [dict(row) for row in rows]
 
 
+def _port_risk_weight(port: int, risk_rules: dict | None = None) -> int:
+    """Look up per-port risk weight from risk_rules.json port_risk_weights."""
+    rules = risk_rules if risk_rules is not None else get_risk_rules()
+    entry = rules.get("port_risk_weights", {}).get(str(port))
+    if not entry:
+        return 0
+    return int(entry.get("weight", 0))
+
+
+def _port_risk_level(weight: int) -> str:
+    """Map a single-port weight (0-35) to a port-scoped risk tier."""
+    if weight >= 30:
+        return "Critical"
+    if weight >= 20:
+        return "High"
+    if weight >= 10:
+        return "Medium"
+    if weight >= 1:
+        return "Low"
+    return "Safe"
+
+
+def rows_to_port_dicts(rows: list[sqlite3.Row]) -> list[dict]:
+    """Convert open_ports rows to dicts with port_risk_weight and port_risk_level."""
+    risk_rules = get_risk_rules()
+    ports: list[dict] = []
+    for row in rows:
+        port_dict = dict(row)
+        weight = _port_risk_weight(int(port_dict["port"]), risk_rules)
+        port_dict["port_risk_weight"] = weight
+        port_dict["port_risk_level"] = _port_risk_level(weight)
+        ports.append(port_dict)
+    return ports
+
+
 DEVICE_FINGERPRINT_FIELDS = (
     "os_guess",
     "os_confidence",
     "device_category",
     "fingerprint_source",
     "last_fingerprint_at",
+)
+
+DEVICE_RISK_FIELDS = (
+    "risk_score",
+    "risk_level",
+    "risk_factors",
+    "risk_calculated_at",
 )
 
 DEVICE_SELECT_COLUMNS = (
@@ -214,21 +306,43 @@ DEVICE_SELECT_COLUMNS = (
     "last_seen",
     "status",
     *DEVICE_FINGERPRINT_FIELDS,
+    *DEVICE_RISK_FIELDS,
 )
 
 DEVICE_SELECT_SQL = ", ".join(DEVICE_SELECT_COLUMNS)
 
+RISK_LEVELS = ("Critical", "High", "Medium", "Low", "None")
+
+
+def _parse_risk_factors(value: str | None) -> list:
+    """Parse risk_factors JSON from the database into a list for API responses."""
+    if not value or not str(value).strip():
+        return []
+    try:
+        parsed = json.loads(value)
+        if isinstance(parsed, list):
+            return parsed
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return []
+
 
 def rows_to_device_dicts(rows: list[sqlite3.Row]) -> list[dict]:
     """
-    Convert device rows to JSON-ready dicts with stable fingerprint fields.
+    Convert device rows to JSON-ready dicts with stable fingerprint and risk fields.
 
     Unfingerprinted devices expose null for os_guess and related fields.
+    Unscored devices expose null risk_score/risk_level and an empty risk_factors array.
     """
     devices: list[dict] = []
     for row in rows:
         device = dict(row)
         for field in DEVICE_FINGERPRINT_FIELDS:
+            value = device.get(field)
+            if field not in device or value == "":
+                device[field] = None
+        device["risk_factors"] = _parse_risk_factors(device.get("risk_factors"))
+        for field in ("risk_score", "risk_level", "risk_calculated_at"):
             value = device.get(field)
             if field not in device or value == "":
                 device[field] = None
@@ -331,6 +445,7 @@ def api_info() -> dict:
             "GET /devices?include_blocked=true",
             "GET /devices/new",
             "GET /devices/{device_ip}",
+            "GET /devices/{device_ip}/risk",
             "PUT /devices/{device_ip}/tag",
             "PUT /devices/id/{device_id}/trust",
             "PUT /devices/id/{device_id}/block",
@@ -348,6 +463,8 @@ def api_info() -> dict:
             "GET /ports/dangerous",
             "GET /ports/{port}/instructions",
             "GET /ports/{device_ip}",
+            "GET /risk/summary",
+            "GET /reference/cve/{port}",
             "POST /vault/unlock",
             "POST /vault/add",
             "POST /vault/list",
@@ -549,6 +666,122 @@ def get_device(device_ip: str) -> dict:
     device = _get_device_by_ip(conn, device_ip)
     conn.close()
     return rows_to_device_dicts([device])[0]
+
+
+@app.get("/devices/{device_ip}/risk")
+def get_device_risk(device_ip: str) -> dict:
+    """Return full risk scoring detail for a single device."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT ip_address, risk_score, risk_level, risk_factors, risk_calculated_at
+        FROM devices
+        WHERE ip_address = ?
+        """,
+        (device_ip,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    if row["risk_score"] is None:
+        return {
+            "device_ip": row["ip_address"],
+            "risk_score": None,
+            "risk_level": "Not yet assessed",
+            "risk_factors": [],
+            "risk_calculated_at": None,
+        }
+
+    return {
+        "device_ip": row["ip_address"],
+        "risk_score": row["risk_score"],
+        "risk_level": row["risk_level"],
+        "risk_factors": _parse_risk_factors(row["risk_factors"]),
+        "risk_calculated_at": row["risk_calculated_at"] or None,
+    }
+
+
+@app.get("/risk/summary")
+def risk_summary() -> dict:
+    """Return aggregate risk statistics across all discovered devices."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT COUNT(*) AS total FROM devices")
+    total_devices = int(cursor.fetchone()["total"])
+
+    level_counts = {level: 0 for level in RISK_LEVELS}
+    cursor.execute(
+        """
+        SELECT risk_level, COUNT(*) AS count
+        FROM devices
+        GROUP BY risk_level
+        """
+    )
+    for row in cursor.fetchall():
+        level = row["risk_level"]
+        if level in level_counts:
+            level_counts[level] = int(row["count"])
+
+    cursor.execute(
+        """
+        SELECT ip_address, hostname, risk_score, risk_level
+        FROM devices
+        WHERE risk_level NOT IN ('None', 'Low')
+          AND risk_level IS NOT NULL
+        ORDER BY risk_score DESC
+        LIMIT 5
+        """
+    )
+    highest_risk_devices = rows_to_dicts(cursor.fetchall())
+    conn.close()
+
+    return {
+        "total_devices": total_devices,
+        "critical_count": level_counts["Critical"],
+        "high_count": level_counts["High"],
+        "medium_count": level_counts["Medium"],
+        "low_count": level_counts["Low"],
+        "none_count": level_counts["None"],
+        "highest_risk_devices": highest_risk_devices,
+    }
+
+
+def _load_nvd_reference_cache() -> dict:
+    """Load the NVD reference cache file, returning an empty dict if unavailable."""
+    if not os.path.exists(NVD_REFERENCE_CACHE_PATH):
+        return {}
+    try:
+        with open(NVD_REFERENCE_CACHE_PATH, encoding="utf-8") as handle:
+            cache = json.load(handle)
+        return cache if isinstance(cache, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+@app.get("/reference/cve/{port}")
+def get_cve_reference(port: int) -> dict:
+    """
+    Return general historical CVE examples for a port exposure category.
+
+    These are reference illustrations only — not findings on any specific device.
+    """
+    cache = _load_nvd_reference_cache()
+    port_key = f"port_{port}"
+    entry = cache.get(port_key)
+
+    if not entry:
+        return {"port": port, "examples": [], "no_data": True}
+
+    examples = entry.get("examples") or []
+    if not isinstance(examples, list) or not examples:
+        return {"port": port, "examples": [], "no_data": True}
+
+    return {"port": port, "examples": examples, "no_data": False}
 
 
 @app.get("/alerts")
@@ -797,7 +1030,7 @@ def list_open_ports() -> dict:
         ORDER BY device_ip, port
         """
     )
-    rows = rows_to_dicts(cursor.fetchall())
+    rows = rows_to_port_dicts(cursor.fetchall())
     conn.close()
 
     grouped: dict[str, list[dict]] = {}
@@ -826,7 +1059,7 @@ def list_dangerous_ports() -> dict:
         ORDER BY device_ip, port
         """
     )
-    rows = rows_to_dicts(cursor.fetchall())
+    rows = rows_to_port_dicts(cursor.fetchall())
     conn.close()
     return {"count": len(rows), "dangerous_ports": rows}
 
@@ -890,7 +1123,7 @@ def list_ports_for_device(device_ip: str) -> dict:
         """,
         (device_ip,),
     )
-    rows = rows_to_dicts(cursor.fetchall())
+    rows = rows_to_port_dicts(cursor.fetchall())
     conn.close()
     return {"device_ip": device_ip, "count": len(rows), "ports": rows}
 

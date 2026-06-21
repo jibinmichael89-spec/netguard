@@ -1,0 +1,58 @@
+{
+  "port_risk_weights": {
+    "21": {"weight": 15, "reason": "Unencrypted FTP - credentials sent in plaintext"},
+    "22": {"weight": 5, "reason": "SSH exposed - low risk if patched, monitor for brute force"},
+    "23": {"weight": 25, "reason": "Telnet is unencrypted and obsolete - high compromise risk"},
+    "139": {"weight": 20, "reason": "NetBIOS - legacy Windows file sharing, exploitable"},
+    "445": {"weight": 30, "reason": "SMB - historically the most exploited port (WannaCry, NotPetya class attacks)"},
+    "1433": {"weight": 35, "reason": "MSSQL exposed - database should never be internet-facing"},
+    "1521": {"weight": 35, "reason": "Oracle DB exposed - critical data exposure risk"},
+    "2049": {"weight": 25, "reason": "NFS - unauthenticated file access risk"},
+    "3306": {"weight": 30, "reason": "MySQL exposed - database should never be internet-facing"},
+    "3389": {"weight": 25, "reason": "RDP - common brute-force and ransomware entry point"},
+    "5432": {"weight": 30, "reason": "PostgreSQL exposed - database should never be internet-facing"},
+    "5900": {"weight": 20, "reason": "VNC - remote screen access, often weak/no authentication"},
+    "5984": {"weight": 25, "reason": "CouchDB - no auth by default, full data exposure risk"},
+    "6379": {"weight": 30, "reason": "Redis - no auth by default, complete data exposure risk"},
+    "9200": {"weight": 25, "reason": "Elasticsearch - indexed data often readable without auth"},
+    "27017": {"weight": 30, "reason": "MongoDB - no auth by default in older versions"},
+    "8080": {"weight": 5, "reason": "Alternate HTTP - low risk if intended, verify it's expected"},
+    "8443": {"weight": 5, "reason": "Alternate HTTPS - low risk if intended, verify it's expected"}
+  },
+  "os_risk_modifiers": {
+    "Windows 10/11": {"weight": 0, "reason": "Modern OS, ensure auto-updates are enabled"},
+    "Linux (generic)": {"weight": 0, "reason": "Verify this device receives regular security patches"},
+    "macOS/iOS": {"weight": 0, "reason": "Modern OS, ensure auto-updates are enabled"},
+    "Android": {"weight": 5, "reason": "Mobile OS - verify app permissions and OS update status"},
+    "Embedded/IoT (Linux-based)": {"weight": 15, "reason": "IoT devices are frequently unpatched and rarely updated by owners"},
+    "Router/Network device": {"weight": 10, "reason": "Router firmware should be kept current - check manufacturer site for updates"}
+  },
+  "category_risk_modifiers": {
+    "IoT": {"weight": 15, "reason": "IoT devices have a historically poor security update track record"},
+    "Router": {"weight": 10, "reason": "A compromised router can expose your entire network"},
+    "Printer": {"weight": 10, "reason": "Printers are often overlooked and unpatched - common lateral movement target"},
+    "Computer": {"weight": 0, "reason": null},
+    "Phone": {"weight": 0, "reason": null},
+    "Smart TV": {"weight": 10, "reason": "Smart TVs run apps with internet access and are rarely security-audited"},
+    "Gaming Console": {"weight": 5, "reason": "Gaming consoles have network exposure - keep firmware updated"}
+  },
+  "trust_modifiers": {
+    "untrusted_unknown_vendor": {"weight": 5, "reason": "Vendor not identified - common for phones with MAC privacy randomization, or may indicate an unrecognized device"},
+    "new_device_24h": {"weight": 10, "reason": "Recently joined network - verify this device is authorized"}
+  },
+  "risk_thresholds": {
+    "Critical": 70,
+    "High": 45,
+    "Medium": 20,
+    "Low": 1,
+    "None": 0
+  },
+  "cve_reference_keywords": {
+    "445": ["SMB vulnerability", "EternalBlue"],
+    "3389": ["RDP vulnerability", "BlueKeep"],
+    "23": ["Telnet vulnerability"],
+    "1433": ["MSSQL vulnerability"],
+    "6379": ["Redis vulnerability"],
+    "27017": ["MongoDB vulnerability"]
+  }
+}

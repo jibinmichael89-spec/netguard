@@ -19,8 +19,9 @@ import { useSystemDetection } from "../hooks/useSystemDetection";
 import StatusBadge from "./StatusBadge";
 import BlockConfirmDialog from "./BlockConfirmDialog";
 import BlockHelpTooltip from "./BlockHelpTooltip";
+import RiskDetailModal, { RiskBadge } from "./RiskDetailModal";
 
-const DEVICE_COLUMN_COUNT = 10;
+const DEVICE_COLUMN_COUNT = 11;
 
 const CATEGORY_ICON_MAP: Record<string, LucideIcon> = {
   Computer: Computer,
@@ -111,6 +112,7 @@ export default function DeviceTable({
   const { systemType } = useSystemDetection();
   const [blockModalDevice, setBlockModalDevice] = useState<Device | null>(null);
   const [blockModalLoading, setBlockModalLoading] = useState(false);
+  const [riskModalDevice, setRiskModalDevice] = useState<Device | null>(null);
 
   const query = search.toLowerCase().trim();
   const filtered = devices.filter((device) => {
@@ -121,7 +123,8 @@ export default function DeviceTable({
       (device.vendor?.toLowerCase().includes(query) ?? false) ||
       (device.device_tag?.toLowerCase().includes(query) ?? false) ||
       (device.device_category?.toLowerCase().includes(query) ?? false) ||
-      (device.os_guess?.toLowerCase().includes(query) ?? false)
+      (device.os_guess?.toLowerCase().includes(query) ?? false) ||
+      (device.risk_level?.toLowerCase().includes(query) ?? false)
     );
   });
 
@@ -167,13 +170,14 @@ export default function DeviceTable({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1080px] text-left text-sm">
+          <table className="w-full min-w-[1160px] text-left text-sm">
             <thead>
               <tr className="border-b border-ng-border text-xs uppercase tracking-wider text-gray-500">
                 <th className="px-4 py-3 font-medium">IP Address</th>
                 <th className="px-4 py-3 font-medium">MAC</th>
                 <th className="px-4 py-3 font-medium">Vendor</th>
                 <th className="px-4 py-3 font-medium">Device Type</th>
+                <th className="px-4 py-3 font-medium">Risk</th>
                 <th className="px-4 py-3 font-medium">Tag</th>
                 <th className="px-4 py-3 font-medium">Trusted</th>
                 <th className="px-4 py-3 font-medium">
@@ -257,6 +261,12 @@ export default function DeviceTable({
                         <DeviceCategoryCell category={device.device_category} />
                       </td>
                       <td className="px-4 py-3">
+                        <RiskBadge
+                          level={device.risk_level}
+                          onClick={() => setRiskModalDevice(device)}
+                        />
+                      </td>
+                      <td className="px-4 py-3">
                         <button
                           type="button"
                           onClick={() => onTagClick(device)}
@@ -327,6 +337,11 @@ export default function DeviceTable({
           </table>
         </div>
       </div>
+
+      <RiskDetailModal
+        device={riskModalDevice}
+        onClose={() => setRiskModalDevice(null)}
+      />
 
       <BlockConfirmDialog
         open={blockModalDevice !== null}

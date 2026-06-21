@@ -15,6 +15,10 @@ export interface Device {
   device_category: string | null;
   fingerprint_source: string | null;
   last_fingerprint_at: string | null;
+  risk_score: number | null;
+  risk_level: "Critical" | "High" | "Medium" | "Low" | "None" | null;
+  risk_factors: Array<{ weight: number; reason: string; port?: number }> | null;
+  risk_calculated_at: string | null;
 }
 
 export interface DeviceTagResponse {
@@ -44,6 +48,34 @@ export interface SystemInfoResponse {
 export interface DevicesResponse {
   count: number;
   devices: Device[];
+}
+
+export interface RiskSummaryResponse {
+  total_devices: number;
+  critical_count: number;
+  high_count: number;
+  medium_count: number;
+  low_count: number;
+  none_count: number;
+  highest_risk_devices: Array<{
+    ip_address: string;
+    hostname: string | null;
+    risk_score: number;
+    risk_level: "Critical" | "High" | "Medium" | "Low" | "None";
+  }>;
+}
+
+export interface CveReferenceExample {
+  cve_id: string;
+  description: string;
+  published: string | null;
+  severity: string | null;
+}
+
+export interface CveReferenceResponse {
+  port: number;
+  examples: CveReferenceExample[];
+  no_data: boolean;
 }
 
 export interface SecurityAlert {
@@ -92,6 +124,8 @@ export interface DnsResponse {
   queries: DnsQuery[];
 }
 
+export type PortRiskLevel = "Critical" | "High" | "Medium" | "Low" | "Safe";
+
 export interface OpenPort {
   id: number;
   device_ip: string;
@@ -100,6 +134,8 @@ export interface OpenPort {
   is_dangerous: number;
   risk_reason: string | null;
   scanned_at: string;
+  port_risk_weight: number;
+  port_risk_level: PortRiskLevel;
 }
 
 export interface PortsResponse {

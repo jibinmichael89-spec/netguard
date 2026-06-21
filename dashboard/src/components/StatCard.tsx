@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 interface StatCardProps {
   label: string;
   value: number | string;
+  subtitle?: string;
   icon: ReactNode;
   accent?: "default" | "safe" | "warning" | "alert" | "accent";
   onClick?: () => void;
@@ -20,6 +21,7 @@ const ACCENT_STYLES = {
 export default function StatCard({
   label,
   value,
+  subtitle,
   icon,
   accent = "default",
   onClick,
@@ -42,6 +44,9 @@ export default function StatCard({
       <p className={`text-3xl font-bold tracking-tight ${ACCENT_STYLES[accent]}`}>
         {value}
       </p>
+      {subtitle && (
+        <p className="mt-1 text-xs text-gray-500">{subtitle}</p>
+      )}
     </button>
   );
 }
