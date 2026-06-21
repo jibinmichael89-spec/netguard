@@ -104,6 +104,7 @@ def get_db_connection() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     _ensure_device_tag_column(conn)
     _ensure_device_trust_columns(conn)
+    _ensure_fingerprint_columns(conn)
     _ensure_inbound_alert_columns(conn)
     return conn
 
@@ -140,6 +141,29 @@ def _ensure_device_trust_columns(conn: sqlite3.Connection) -> None:
         conn.commit()
 
 
+def _ensure_fingerprint_columns(conn: sqlite3.Connection) -> None:
+    """Add passive OS fingerprint columns to devices table if missing."""
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(devices)")
+    columns = {row[1] for row in cursor.fetchall()}
+    changed = False
+    fingerprint_columns = {
+        "os_guess": "TEXT",
+        "os_confidence": "TEXT",
+        "device_category": "TEXT",
+        "fingerprint_source": "TEXT",
+        "last_fingerprint_at": "TEXT",
+    }
+    for column_name, column_type in fingerprint_columns.items():
+        if column_name not in columns:
+            cursor.execute(
+                f"ALTER TABLE devices ADD COLUMN {column_name} {column_type}"
+            )
+            changed = True
+    if changed:
+        conn.commit()
+
+
 def _ensure_inbound_alert_columns(conn: sqlite3.Connection) -> None:
     """Add inbound connection columns to alerts table if missing."""
     cursor = conn.cursor()
@@ -169,10 +193,56 @@ def rows_to_dicts(rows: list[sqlite3.Row]) -> list[dict]:
     return [dict(row) for row in rows]
 
 
+DEVICE_FINGERPRINT_FIELDS = (
+    "os_guess",
+    "os_confidence",
+    "device_category",
+    "fingerprint_source",
+    "last_fingerprint_at",
+)
+
+DEVICE_SELECT_COLUMNS = (
+    "id",
+    "ip_address",
+    "mac_address",
+    "vendor",
+    "hostname",
+    "device_tag",
+    "is_trusted",
+    "is_blocked",
+    "first_seen",
+    "last_seen",
+    "status",
+    *DEVICE_FINGERPRINT_FIELDS,
+)
+
+DEVICE_SELECT_SQL = ", ".join(DEVICE_SELECT_COLUMNS)
+
+
+def rows_to_device_dicts(rows: list[sqlite3.Row]) -> list[dict]:
+    """
+    Convert device rows to JSON-ready dicts with stable fingerprint fields.
+
+    Unfingerprinted devices expose null for os_guess and related fields.
+    """
+    devices: list[dict] = []
+    for row in rows:
+        device = dict(row)
+        for field in DEVICE_FINGERPRINT_FIELDS:
+            value = device.get(field)
+            if field not in device or value == "":
+                device[field] = None
+        devices.append(device)
+    return devices
+
+
 def _get_device_row(conn: sqlite3.Connection, device_id: int) -> sqlite3.Row:
     """Return a device row by primary key or raise HTTP 404."""
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM devices WHERE id = ?", (device_id,))
+    cursor.execute(
+        f"SELECT {DEVICE_SELECT_SQL} FROM devices WHERE id = ?",
+        (device_id,),
+    )
     row = cursor.fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Device not found")
@@ -182,7 +252,10 @@ def _get_device_row(conn: sqlite3.Connection, device_id: int) -> sqlite3.Row:
 def _get_device_by_ip(conn: sqlite3.Connection, device_ip: str) -> sqlite3.Row:
     """Return a device row by IP address or raise HTTP 404."""
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM devices WHERE ip_address = ?", (device_ip,))
+    cursor.execute(
+        f"SELECT {DEVICE_SELECT_SQL} FROM devices WHERE ip_address = ?",
+        (device_ip,),
+    )
     row = cursor.fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Device not found")
@@ -257,6 +330,7 @@ def api_info() -> dict:
             "GET /devices",
             "GET /devices?include_blocked=true",
             "GET /devices/new",
+            "GET /devices/{device_ip}",
             "PUT /devices/{device_ip}/tag",
             "PUT /devices/id/{device_id}/trust",
             "PUT /devices/id/{device_id}/block",
@@ -312,16 +386,19 @@ def list_devices(include_blocked: bool = Query(default=False)) -> dict:
     conn = get_db_connection()
     cursor = conn.cursor()
     if include_blocked:
-        cursor.execute("SELECT * FROM devices ORDER BY ip_address")
+        cursor.execute(
+            f"SELECT {DEVICE_SELECT_SQL} FROM devices ORDER BY ip_address"
+        )
     else:
         cursor.execute(
-            """
-            SELECT * FROM devices
+            f"""
+            SELECT {DEVICE_SELECT_SQL}
+            FROM devices
             WHERE COALESCE(is_blocked, 0) = 0
             ORDER BY ip_address
             """
         )
-    devices = rows_to_dicts(cursor.fetchall())
+    devices = rows_to_device_dicts(cursor.fetchall())
     conn.close()
     return {"count": len(devices), "devices": devices}
 
@@ -448,20 +525,30 @@ def list_new_devices() -> dict:
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        """
-        SELECT * FROM devices
+        f"""
+        SELECT {DEVICE_SELECT_SQL}
+        FROM devices
         WHERE first_seen >= ?
         ORDER BY first_seen DESC
         """,
         (cutoff,),
     )
-    devices = rows_to_dicts(cursor.fetchall())
+    devices = rows_to_device_dicts(cursor.fetchall())
     conn.close()
     return {
         "window_hours": NEW_DEVICE_WINDOW_HOURS,
         "count": len(devices),
         "devices": devices,
     }
+
+
+@app.get("/devices/{device_ip}")
+def get_device(device_ip: str) -> dict:
+    """Return a single device record by IP address."""
+    conn = get_db_connection()
+    device = _get_device_by_ip(conn, device_ip)
+    conn.close()
+    return rows_to_device_dicts([device])[0]
 
 
 @app.get("/alerts")
@@ -480,23 +567,25 @@ def list_alerts() -> dict:
     cursor = conn.cursor()
 
     cursor.execute(
-        """
-        SELECT * FROM devices
+        f"""
+        SELECT {DEVICE_SELECT_SQL}
+        FROM devices
         WHERE first_seen >= ?
         ORDER BY first_seen DESC
         """,
         (cutoff,),
     )
-    new_devices = rows_to_dicts(cursor.fetchall())
+    new_devices = rows_to_device_dicts(cursor.fetchall())
 
     cursor.execute(
-        """
-        SELECT * FROM devices
+        f"""
+        SELECT {DEVICE_SELECT_SQL}
+        FROM devices
         WHERE status = 'offline'
         ORDER BY last_seen DESC
         """
     )
-    offline_devices = rows_to_dicts(cursor.fetchall())
+    offline_devices = rows_to_device_dicts(cursor.fetchall())
 
     conn.close()
 

@@ -1,6 +1,17 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Check, Search } from "lucide-react";
+import {
+  Check,
+  Computer,
+  Cpu,
+  Gamepad2,
+  Printer,
+  Router,
+  Search,
+  Smartphone,
+  Tv,
+  type LucideIcon,
+} from "lucide-react";
 import type { Device } from "../types";
 import { NEW_DEVICE_WINDOW_HOURS } from "../config";
 import { formatTimestamp, isRecentlyAdded } from "../utils/format";
@@ -8,6 +19,69 @@ import { useSystemDetection } from "../hooks/useSystemDetection";
 import StatusBadge from "./StatusBadge";
 import BlockConfirmDialog from "./BlockConfirmDialog";
 import BlockHelpTooltip from "./BlockHelpTooltip";
+
+const DEVICE_COLUMN_COUNT = 10;
+
+const CATEGORY_ICON_MAP: Record<string, LucideIcon> = {
+  Computer: Computer,
+  Phone: Smartphone,
+  "Smart TV": Tv,
+  "Gaming Console": Gamepad2,
+  Printer: Printer,
+  Router: Router,
+  IoT: Cpu,
+};
+
+function DeviceCategoryCell({ category }: { category: string | null }) {
+  if (!category) {
+    return <span className="text-gray-500">—</span>;
+  }
+
+  const Icon = CATEGORY_ICON_MAP[category] ?? Cpu;
+
+  return (
+    <span className="inline-flex items-center gap-1.5 text-gray-300">
+      <Icon className="h-3.5 w-3.5 shrink-0 text-gray-400" aria-hidden />
+      <span>{category}</span>
+    </span>
+  );
+}
+
+function VendorCell({
+  vendor,
+  osGuess,
+  osConfidence,
+  showUnknownWarning,
+}: {
+  vendor: string | null;
+  osGuess: string | null;
+  osConfidence: Device["os_confidence"];
+  showUnknownWarning: boolean;
+}) {
+  const lowConfidence = osConfidence === "Low";
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-gray-300">{vendor ?? "Unknown"}</span>
+        {showUnknownWarning && (
+          <span className="rounded bg-ng-warning/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ng-warning">
+            Warning
+          </span>
+        )}
+      </div>
+      {osGuess && (
+        <span
+          className={`text-xs text-gray-500 ${
+            lowConfidence ? "opacity-60" : ""
+          }`}
+        >
+          {osGuess}
+        </span>
+      )}
+    </div>
+  );
+}
 
 interface DeviceTableProps {
   devices: Device[];
@@ -45,7 +119,9 @@ export default function DeviceTable({
       device.ip_address.toLowerCase().includes(query) ||
       (device.hostname?.toLowerCase().includes(query) ?? false) ||
       (device.vendor?.toLowerCase().includes(query) ?? false) ||
-      (device.device_tag?.toLowerCase().includes(query) ?? false)
+      (device.device_tag?.toLowerCase().includes(query) ?? false) ||
+      (device.device_category?.toLowerCase().includes(query) ?? false) ||
+      (device.os_guess?.toLowerCase().includes(query) ?? false)
     );
   });
 
@@ -91,12 +167,13 @@ export default function DeviceTable({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-left text-sm">
+          <table className="w-full min-w-[1080px] text-left text-sm">
             <thead>
               <tr className="border-b border-ng-border text-xs uppercase tracking-wider text-gray-500">
                 <th className="px-4 py-3 font-medium">IP Address</th>
                 <th className="px-4 py-3 font-medium">MAC</th>
                 <th className="px-4 py-3 font-medium">Vendor</th>
+                <th className="px-4 py-3 font-medium">Device Type</th>
                 <th className="px-4 py-3 font-medium">Tag</th>
                 <th className="px-4 py-3 font-medium">Trusted</th>
                 <th className="px-4 py-3 font-medium">
@@ -113,7 +190,7 @@ export default function DeviceTable({
             <tbody className="divide-y divide-ng-border">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={DEVICE_COLUMN_COUNT} className="px-4 py-8 text-center text-gray-500">
                     {query
                       ? "No devices match your search."
                       : filterActive
@@ -169,16 +246,15 @@ export default function DeviceTable({
                         {device.mac_address}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-gray-300">
-                            {device.vendor ?? "Unknown"}
-                          </span>
-                          {unknownVendor && (
-                            <span className="rounded bg-ng-warning/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ng-warning">
-                              Warning
-                            </span>
-                          )}
-                        </div>
+                        <VendorCell
+                          vendor={device.vendor}
+                          osGuess={device.os_guess}
+                          osConfidence={device.os_confidence}
+                          showUnknownWarning={unknownVendor}
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <DeviceCategoryCell category={device.device_category} />
                       </td>
                       <td className="px-4 py-3">
                         <button
