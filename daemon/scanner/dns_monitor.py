@@ -3,11 +3,19 @@
 NetGuard DNS Monitor
 Captures DNS queries on the local network using Scapy, classifies domains,
 flags suspicious activity, and persists every query to SQLite.
+
+Also tails a dnsmasq log file (when present) for DNS queries seen by the
+local resolver — both sources write to the same dns_queries table.
 """
 
+from __future__ import annotations
+
 import os
+import re
 import sqlite3
 import sys
+import threading
+import time
 from datetime import datetime, timezone
 
 from scapy.all import DNS, IP, sniff
@@ -22,6 +30,12 @@ DB_PATH = os.path.join(PROJECT_ROOT, "netguard.db")
 
 # BPF filter — capture all DNS traffic on UDP port 53
 DNS_BPF_FILTER = "udp port 53"
+
+# dnsmasq query log (Pi / router deployments)
+DNSMASQ_LOG_PATH = "/home/netguard/netguard/logs/dnsmasq.log"
+DNSMASQ_LOG_RETRY_SECONDS = 5
+DNSMASQ_DEDUP_WINDOW_SECONDS = 10
+DNSMASQ_TAIL_POLL_SECONDS = 0.2
 
 # High-risk top-level domains
 HIGH_RISK_TLDS = (".ru", ".cn", ".tk", ".pw", ".top")
@@ -60,6 +74,17 @@ QUERY_TYPE_NAMES = {
     33: "SRV",
     255: "ANY",
 }
+
+DNSMASQ_QUERY_RE = re.compile(
+    r"query\[(A|AAAA)\]\s+(\S+)\s+from\s+(\S+)",
+    re.IGNORECASE,
+)
+DNSMASQ_SYSLOG_TS_RE = re.compile(
+    r"^(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})",
+)
+
+_dedup_lock = threading.Lock()
+_recent_dnsmasq_queries: dict[tuple[str, str], float] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -343,6 +368,149 @@ def process_packet(packet) -> None:
 
 
 # ---------------------------------------------------------------------------
+# dnsmasq log parsing
+# ---------------------------------------------------------------------------
+
+def parse_dnsmasq_syslog_timestamp(line: str) -> str:
+    """Parse a syslog-style timestamp prefix from a dnsmasq log line."""
+    match = DNSMASQ_SYSLOG_TS_RE.match(line)
+    if not match:
+        return datetime.now(timezone.utc).isoformat()
+
+    prefix = match.group(1)
+    now = datetime.now()
+    try:
+        parsed = datetime.strptime(f"{now.year} {prefix}", "%Y %b %d %H:%M:%S")
+        return parsed.replace(tzinfo=timezone.utc).isoformat()
+    except ValueError:
+        return datetime.now(timezone.utc).isoformat()
+
+
+def parse_dnsmasq_query_line(
+    line: str,
+) -> tuple[str, str, str, str] | None:
+    """
+    Parse a dnsmasq query log line.
+
+    Returns (query_type, domain, source_ip, timestamp) or None when the line
+    is not a query[A] / query[AAAA] entry.
+    """
+    match = DNSMASQ_QUERY_RE.search(line)
+    if not match:
+        return None
+
+    query_type = match.group(1).upper()
+    domain = match.group(2).rstrip(".")
+    source_ip = match.group(3)
+    timestamp = parse_dnsmasq_syslog_timestamp(line)
+    return query_type, domain, source_ip, timestamp
+
+
+def _is_recent_dnsmasq_duplicate(domain: str, source_ip: str, now: float) -> bool:
+    """Return True when the same domain+IP was recorded within the dedup window."""
+    key = (domain.lower(), source_ip)
+    with _dedup_lock:
+        last_seen = _recent_dnsmasq_queries.get(key)
+        if last_seen is not None and (now - last_seen) < DNSMASQ_DEDUP_WINDOW_SECONDS:
+            return True
+
+        _recent_dnsmasq_queries[key] = now
+
+        stale_before = now - DNSMASQ_DEDUP_WINDOW_SECONDS
+        stale_keys = [
+            entry_key
+            for entry_key, seen_at in _recent_dnsmasq_queries.items()
+            if seen_at < stale_before
+        ]
+        for entry_key in stale_keys:
+            del _recent_dnsmasq_queries[entry_key]
+
+        return False
+
+
+def process_dnsmasq_query_line(line: str) -> None:
+    """Parse and persist a single dnsmasq log line when it is a DNS query."""
+    parsed = parse_dnsmasq_query_line(line)
+    if parsed is None:
+        return
+
+    query_type, domain, source_ip, timestamp = parsed
+    now = time.monotonic()
+    if _is_recent_dnsmasq_duplicate(domain, source_ip, now):
+        return
+
+    is_suspicious, reason = check_suspicious(domain)
+    category = categorize_domain(domain)
+
+    save_dns_query(
+        DB_PATH,
+        timestamp,
+        source_ip,
+        domain,
+        query_type,
+        None,
+        is_suspicious,
+        reason,
+    )
+    print_dns_query(timestamp, source_ip, domain, category, is_suspicious)
+
+
+def _tail_dnsmasq_log(log_path: str) -> None:
+    """
+    Follow a dnsmasq log file from the current end, handling rotation/truncation.
+    """
+    with open(log_path, encoding="utf-8", errors="replace") as handle:
+        handle.seek(0, os.SEEK_END)
+        inode = os.fstat(handle.fileno()).st_ino
+
+        while True:
+            line = handle.readline()
+            if line:
+                process_dnsmasq_query_line(line.strip())
+                continue
+
+            try:
+                stat = os.stat(log_path)
+            except OSError:
+                print(f"[*] DNS masq log unavailable — will reopen: {log_path}")
+                time.sleep(DNSMASQ_LOG_RETRY_SECONDS)
+                return
+
+            if stat.st_ino != inode or stat.st_size < handle.tell():
+                print(f"[*] DNS masq log rotated — reopening: {log_path}")
+                return
+
+            time.sleep(DNSMASQ_TAIL_POLL_SECONDS)
+
+
+def monitor_dnsmasq_log(log_path: str = DNSMASQ_LOG_PATH) -> None:
+    """
+    Tail a dnsmasq log file continuously and persist DNS queries.
+
+    Waits for the log file to appear when missing and reopens the file after
+    rotation or truncation.
+    """
+    print(f"[*] DNS masq log monitor watching: {log_path}")
+
+    while True:
+        while not os.path.exists(log_path):
+            print(
+                f"[*] DNS masq log not found ({log_path}) — "
+                f"retrying in {DNSMASQ_LOG_RETRY_SECONDS}s"
+            )
+            time.sleep(DNSMASQ_LOG_RETRY_SECONDS)
+
+        try:
+            _tail_dnsmasq_log(log_path)
+        except OSError as exc:
+            print(f"[!] DNS masq log read error: {exc}")
+            time.sleep(DNSMASQ_LOG_RETRY_SECONDS)
+        except Exception as exc:
+            print(f"[!] DNS masq log monitor error: {exc}")
+            time.sleep(DNSMASQ_LOG_RETRY_SECONDS)
+
+
+# ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
 
@@ -350,13 +518,24 @@ def main() -> None:
     """
     Entry point: initialise the database and start continuous DNS capture.
 
-    Uses Scapy sniff to monitor all DNS traffic until interrupted.
+    Uses Scapy sniff to monitor all DNS traffic until interrupted, with a
+    background thread tailing the dnsmasq log when available.
     """
     print("NetGuard DNS Monitor starting ...")
     print(f"Database: {DB_PATH}")
 
-    require_root()
     init_database(DB_PATH)
+
+    log_thread = threading.Thread(
+        target=monitor_dnsmasq_log,
+        args=(DNSMASQ_LOG_PATH,),
+        name="dnsmasq-log-monitor",
+        daemon=True,
+    )
+    log_thread.start()
+    print(f"DNS masq log: {DNSMASQ_LOG_PATH}")
+
+    require_root()
 
     print(f"Capture filter: {DNS_BPF_FILTER}")
     print("Press Ctrl+C to stop.\n")
