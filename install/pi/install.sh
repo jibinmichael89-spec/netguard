@@ -133,6 +133,8 @@ install_env_file() {
 NETGUARD_DB_PATH=$DATA_DIR/netguard.db
 NETGUARD_LOG_DIR=$LOG_DIR
 DNSMASQ_LOG_PATH=$LOG_DIR/dnsmasq.log
+# Uncomment and set if gateway auto-detection is wrong:
+# NETGUARD_GATEWAY_IP=192.168.1.1
 EOF
     chmod 644 "$ENV_FILE"
 }
@@ -170,7 +172,7 @@ install_systemd_units() {
     fi
     for unit in netguard.target netguard-api.service netguard-arp-scanner.service \
         netguard-risk-scorer.service netguard-dns-monitor.service \
-        netguard-network-blocker.service; do
+        netguard-arp-spoof.service netguard-network-blocker.service; do
         install -m 644 "$systemd_dir/$unit" "/etc/systemd/system/$unit"
     done
     systemctl daemon-reload
@@ -185,6 +187,7 @@ enable_services() {
     systemctl restart netguard-arp-scanner.service
     systemctl restart netguard-risk-scorer.service
     systemctl restart netguard-dns-monitor.service
+    systemctl restart netguard-arp-spoof.service
     systemctl restart netguard-api.service
     systemctl restart netguard.target
 
@@ -210,6 +213,10 @@ print_summary() {
    netguard-arp-scanner.service
    netguard-risk-scorer.service
    netguard-dns-monitor.service
+   netguard-arp-spoof.service
+
+ Documentation:
+   install/pi/NetGuard-Pi-Install-Guide.pdf
 
  Useful commands:
    sudo systemctl status netguard.target

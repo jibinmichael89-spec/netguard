@@ -1,5 +1,5 @@
 #define MyAppName "NetGuard"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "NetGuard"
 #define MyAppExeName "NetGuard-API.exe"
 #define LauncherScript "START-NetGuard.bat"
@@ -31,12 +31,15 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "{#BuildDir}\NetGuard-API.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\arp-scanner.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#BuildDir}\arp-spoof-detector.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "dist\{#LauncherScript}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "dist\START-ARP-Scanner.bat"; DestDir: "{app}"; Flags: ignoreversion
+Source: "dist\START-ARP-Spoof-Detector.bat"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#LauncherScript}"; IconFilename: "{app}\{#MyAppExeName}"
 Name: "{group}\ARP Scanner"; Filename: "{app}\START-ARP-Scanner.bat"; IconFilename: "{app}\arp-scanner.exe"
+Name: "{group}\ARP Spoof Guard"; Filename: "{app}\START-ARP-Spoof-Detector.bat"; IconFilename: "{app}\arp-spoof-detector.exe"
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#LauncherScript}"; IconFilename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 

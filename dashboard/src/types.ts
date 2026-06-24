@@ -93,6 +93,28 @@ export interface SecurityAlertsResponse {
   alerts: SecurityAlert[];
 }
 
+export type DetectorStatus = "active" | "stale" | "inactive" | "standby";
+
+export type MonitoringOverallStatus = "watching" | "degraded" | "offline";
+
+export interface MonitoringDetector {
+  id: string;
+  name: string;
+  description: string;
+  optional: boolean;
+  status: DetectorStatus;
+  last_activity: string | null;
+  age_seconds: number | null;
+}
+
+export interface MonitoringStatusResponse {
+  timestamp: string;
+  overall_status: MonitoringOverallStatus;
+  last_device_scan: string | null;
+  online_device_count: number;
+  detectors: MonitoringDetector[];
+}
+
 export interface InboundAttempt {
   source_ip: string;
   source_port: number;

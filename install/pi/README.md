@@ -10,6 +10,7 @@ One-command install with **systemd** auto-start on boot.
 | `netguard-arp-scanner` | Device discovery + port scans | `root` |
 | `netguard-risk-scorer` | Risk scoring | `netguard` |
 | `netguard-dns-monitor` | DNS capture (Scapy + dnsmasq log) | `root` |
+| `netguard-arp-spoof` | ARP spoof / MAC change detection | `netguard` |
 
 Optional (disabled by default):
 
@@ -30,7 +31,7 @@ chmod +x install/pi/build-release.sh
 ./install/pi/build-release.sh
 ```
 
-Creates: `dist/NetGuard-pi-YYYY.MM.DD.tar.gz`
+Creates: `dist/NetGuard-pi-YYYY.MM.DD.tar.gz` (includes pre-built dashboard and PDF install guide)
 
 Copy to Pi and install:
 

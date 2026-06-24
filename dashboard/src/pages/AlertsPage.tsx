@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
 import { apiFetch } from "../api";
-import type { DevicesResponse, SecurityAlertsResponse } from "../types";
+import { DASHBOARD_REFRESH_MS } from "../config";
+import type {
+  DevicesResponse,
+  MonitoringStatusResponse,
+  SecurityAlertsResponse,
+} from "../types";
 import { formatTimestamp } from "../utils/format";
 import SeverityBadge from "../components/SeverityBadge";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ScannerOffline from "../components/ScannerOffline";
 import InboundActivitySection from "../components/InboundActivitySection";
+import MonitoringStatusPanel from "../components/MonitoringStatusPanel";
 
 type AlertsTab = "security" | "inbound";
 
@@ -19,18 +25,23 @@ export default function AlertsPage() {
   const [activeTab, setActiveTab] = useState<AlertsTab>("security");
   const [alerts, setAlerts] = useState<SecurityAlertsResponse["alerts"]>([]);
   const [devices, setDevices] = useState<DevicesResponse["devices"]>([]);
+  const [monitoringStatus, setMonitoringStatus] =
+    useState<MonitoringStatusResponse | null>(null);
   const [blockedIps, setBlockedIps] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
 
-  const fetchAlerts = useCallback(async () => {
+  const fetchAlerts = useCallback(async (isInitial = false) => {
+    if (isInitial) setLoading(true);
     try {
-      const [alertsRes, devicesRes] = await Promise.all([
+      const [alertsRes, devicesRes, monitoringRes] = await Promise.all([
         apiFetch<SecurityAlertsResponse>("/alerts/security"),
         apiFetch<DevicesResponse>("/devices?include_blocked=true"),
+        apiFetch<MonitoringStatusResponse>("/monitoring/status"),
       ]);
       setAlerts(alertsRes.alerts);
       setDevices(devicesRes.devices);
+      setMonitoringStatus(monitoringRes);
       setBlockedIps(
         new Set(
           devicesRes.devices
@@ -42,12 +53,16 @@ export default function AlertsPage() {
     } catch {
       setOffline(true);
     } finally {
-      setLoading(false);
+      if (isInitial) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchAlerts();
+    fetchAlerts(true);
+    const intervalId = window.setInterval(() => {
+      fetchAlerts(false);
+    }, DASHBOARD_REFRESH_MS);
+    return () => window.clearInterval(intervalId);
   }, [fetchAlerts]);
 
   const visibleAlerts = useMemo(
@@ -86,8 +101,7 @@ export default function AlertsPage() {
     return (
       <ScannerOffline
         onRetry={() => {
-          setLoading(true);
-          fetchAlerts();
+          fetchAlerts(true);
         }}
       />
     );
@@ -103,6 +117,8 @@ export default function AlertsPage() {
             : "Unexpected incoming connections to your devices"}
         </p>
       </div>
+
+      {monitoringStatus && <MonitoringStatusPanel status={monitoringStatus} />}
 
       <div
         className="flex flex-wrap gap-2"
@@ -139,6 +155,15 @@ export default function AlertsPage() {
             <p className="text-lg font-medium text-ng-safe">
               No security alerts — network is clean
             </p>
+            {monitoringStatus?.last_device_scan && (
+              <p className="max-w-md text-sm text-gray-400">
+                Last scan{" "}
+                <time dateTime={monitoringStatus.last_device_scan}>
+                  {formatTimestamp(monitoringStatus.last_device_scan)}
+                </time>
+                . Monitoring remains active in the background.
+              </p>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
