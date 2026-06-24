@@ -1,0 +1,16 @@
+[Unit]
+Description=NetGuard Network Block Enforcer (ARP isolation, optional)
+After=network-online.target netguard-arp-scanner.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/netguard
+EnvironmentFile=/etc/netguard/netguard.env
+ExecStart=/opt/netguard/venv/bin/python daemon/enforcement/network_blocker.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

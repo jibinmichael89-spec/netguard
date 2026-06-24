@@ -32,7 +32,10 @@ DB_PATH = os.path.join(PROJECT_ROOT, "netguard.db")
 DNS_BPF_FILTER = "udp port 53"
 
 # dnsmasq query log (Pi / router deployments)
-DNSMASQ_LOG_PATH = "/home/netguard/netguard/logs/dnsmasq.log"
+DNSMASQ_LOG_PATH = os.environ.get(
+    "DNSMASQ_LOG_PATH",
+    "/home/netguard/netguard/logs/dnsmasq.log",
+)
 DNSMASQ_LOG_RETRY_SECONDS = 5
 DNSMASQ_DEDUP_WINDOW_SECONDS = 10
 DNSMASQ_TAIL_POLL_SECONDS = 0.2

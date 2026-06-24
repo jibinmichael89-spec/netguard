@@ -106,7 +106,9 @@ Each device record includes:
 
 ## Network Blocking (disconnect devices)
 
-By default, **Block** in the dashboard only hides a device from the UI. To actually **disconnect blocked devices from the network**, run the block enforcer on your Raspberry Pi (Linux, root required):
+See `install/pi/README.md` for **one-step Raspberry Pi installation** with systemd auto-start.
+
+By default, **Block** in the dashboard only hides a device from the UI on Windows. On Pi, run the block enforcer (optional systemd service):
 
 ```bash
 sudo python3 daemon/enforcement/network_blocker.py

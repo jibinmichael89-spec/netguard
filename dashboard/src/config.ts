@@ -1,5 +1,5 @@
-/** NetGuard API base URL */
-export const API_BASE_URL = "http://192.168.1.71:8000";
+/** NetGuard API base URL — empty in production (API serves the dashboard) */
+export const API_BASE_URL = import.meta.env.DEV ? "http://localhost:8000" : "";
 
 /** Devices first seen within this window are tagged as NEW */
 export const NEW_DEVICE_WINDOW_HOURS = 24;
