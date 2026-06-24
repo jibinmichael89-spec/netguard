@@ -12,7 +12,8 @@ Limitations:
 - NetGuard must run on the same LAN segment as blocked devices.
 - Requires root for raw ARP packets (Scapy).
 - Does not work on Windows; use a Raspberry Pi or Linux host.
-- Some routers/APs with client isolation may reduce effectiveness.
+- Mesh WiFi (Velop, Eero, Orbi) may ignore or bypass ARP isolation.
+- Phones with WiFi privacy (randomized MAC) need live ARP resolution.
 - Blocking is active only while this daemon is running.
 """
 
@@ -29,11 +30,19 @@ from dataclasses import dataclass
 from scapy.all import ARP, Ether, conf, get_if_hwaddr, sendp, srp
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-DB_PATH = os.path.join(PROJECT_ROOT, "netguard.db")
+
+_daemon_dir = os.path.join(PROJECT_ROOT, "daemon")
+if os.path.isdir(_daemon_dir) and _daemon_dir not in sys.path:
+    sys.path.insert(0, _daemon_dir)
+
+from db_path import resolve_db_path
+
+DB_PATH = resolve_db_path(PROJECT_ROOT)
 
 POLL_INTERVAL_SECONDS = 5
-ARP_REFRESH_INTERVAL_SECONDS = 3
-BLACKHOLE_MAC = "00:00:00:00:00:00"
+ARP_REFRESH_INTERVAL_SECONDS = 2
+IPTABLES_TIMEOUT_SECONDS = 10
+ARP_POISON_BURST_COUNT = 3
 
 GATEWAY_IP = os.environ.get("NETGUARD_GATEWAY_IP", "").strip() or None
 
@@ -93,8 +102,28 @@ def resolve_mac(ip_address: str, timeout: int = 2) -> str | None:
     return answered[0][1].hwsrc.upper()
 
 
-def get_blocked_devices(db_path: str, local_ip: str, gateway_ip: str) -> list[BlockTarget]:
-    """Return online blocked devices, excluding NetGuard host and gateway."""
+def is_randomized_mac(mac_address: str) -> bool:
+    """Return True for locally administered (privacy/randomized) MAC addresses."""
+    try:
+        first_octet = int(mac_address.split(":")[0], 16)
+    except (ValueError, IndexError):
+        return False
+    return bool(first_octet & 0x02)
+
+
+def count_blocked_devices() -> int:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT COUNT(*) AS total FROM devices WHERE COALESCE(is_blocked, 0) = 1"
+    )
+    total = int(cursor.fetchone()["total"])
+    conn.close()
+    return total
+
+
+def get_blocked_devices(local_ip: str, gateway_ip: str) -> list[BlockTarget]:
+    """Return blocked devices, excluding the NetGuard host and gateway."""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
@@ -102,7 +131,6 @@ def get_blocked_devices(db_path: str, local_ip: str, gateway_ip: str) -> list[Bl
         SELECT id, ip_address, mac_address
         FROM devices
         WHERE COALESCE(is_blocked, 0) = 1
-          AND status = 'online'
         ORDER BY ip_address
         """
     )
@@ -113,32 +141,125 @@ def get_blocked_devices(db_path: str, local_ip: str, gateway_ip: str) -> list[Bl
     skip_ips = {local_ip, gateway_ip}
     for row in rows:
         ip = row["ip_address"]
-        mac = row["mac_address"].upper()
-        if ip in skip_ips:
+        mac = (row["mac_address"] or "").upper()
+        if not ip or ip in skip_ips or not mac:
             continue
         targets.append(BlockTarget(row["id"], ip, mac))
     return targets
 
 
+def _run_iptables(args: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["iptables", *args],
+        capture_output=True,
+        text=True,
+        timeout=IPTABLES_TIMEOUT_SECONDS,
+    )
+
+
+def _iptables_rule_exists(chain: str, rule_args: list[str]) -> bool:
+    return _run_iptables(["-C", chain, *rule_args]).returncode == 0
+
+
+def _iptables_add(chain: str, rule_args: list[str]) -> bool:
+    if _iptables_rule_exists(chain, rule_args):
+        return True
+    result = _run_iptables(["-I", chain, *rule_args])
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        print(f"[!] iptables add failed ({chain} {' '.join(rule_args)}): {detail}")
+        return False
+    return True
+
+
+def _iptables_delete(chain: str, rule_args: list[str]) -> bool:
+    if not _iptables_rule_exists(chain, rule_args):
+        return True
+    result = _run_iptables(["-D", chain, *rule_args])
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        print(f"[!] iptables delete failed ({chain} {' '.join(rule_args)}): {detail}")
+        return False
+    return True
+
+
+def _traffic_block_rules(ip: str) -> list[tuple[str, list[str]]]:
+    return [
+        ("INPUT", ["-s", ip, "-j", "DROP"]),
+        ("FORWARD", ["-s", ip, "-j", "DROP"]),
+        ("FORWARD", ["-d", ip, "-j", "DROP"]),
+    ]
+
+
+def apply_traffic_block(ip: str) -> bool:
+    success = True
+    for chain, rule_args in _traffic_block_rules(ip):
+        if not _iptables_add(chain, rule_args):
+            success = False
+    return success
+
+
+def remove_traffic_block(ip: str) -> bool:
+    success = True
+    for chain, rule_args in _traffic_block_rules(ip):
+        if not _iptables_delete(chain, rule_args):
+            success = False
+    return success
+
+
+def sync_traffic_blocks(desired_ips: set[str], active_ips: set[str]) -> set[str]:
+    updated = set(active_ips)
+    for ip in sorted(active_ips - desired_ips):
+        if remove_traffic_block(ip):
+            updated.discard(ip)
+    for ip in sorted(desired_ips - active_ips):
+        if apply_traffic_block(ip):
+            updated.add(ip)
+    return updated
+
+
+def resolve_target_mac(target: BlockTarget, iface: str) -> str:
+    """
+    Prefer a live ARP lookup over the database MAC.
+
+    Privacy/randomized WiFi MACs in the database are often stale.
+    """
+    live_mac = resolve_mac(target.ip_address, timeout=1)
+    if live_mac:
+        if live_mac != target.mac_address:
+            privacy_note = ""
+            if is_randomized_mac(live_mac) or is_randomized_mac(target.mac_address):
+                privacy_note = " [privacy MAC]"
+            print(
+                f"[*] Live MAC for {target.ip_address}: {live_mac} "
+                f"(database had {target.mac_address}){privacy_note}"
+            )
+        return live_mac
+    return target.mac_address
+
+
 def poison_arp_cache(
     target: BlockTarget,
+    victim_mac: str,
     gateway_ip: str,
     gateway_mac: str,
+    local_mac: str,
     iface: str,
 ) -> None:
     """
-    Isolate a device by pointing both it and the gateway at a blackhole MAC.
+    Isolate a device with bidirectional ARP cache poisoning.
 
-    - Victim thinks the gateway is unreachable.
-    - Gateway thinks the victim is unreachable.
+    Both the victim and gateway are told the other party lives at the Pi MAC.
+    Traffic destined for either side is delivered to the Pi and dropped via
+    iptables rules applied for the victim IP.
     """
     to_victim = (
-        Ether(dst=target.mac_address)
+        Ether(dst=victim_mac)
         / ARP(
             op=2,
-            hwsrc=BLACKHOLE_MAC,
+            hwsrc=local_mac,
             psrc=gateway_ip,
-            hwdst=target.mac_address,
+            hwdst=victim_mac,
             pdst=target.ip_address,
         )
     )
@@ -146,14 +267,15 @@ def poison_arp_cache(
         Ether(dst=gateway_mac)
         / ARP(
             op=2,
-            hwsrc=BLACKHOLE_MAC,
+            hwsrc=local_mac,
             psrc=target.ip_address,
             hwdst=gateway_mac,
             pdst=gateway_ip,
         )
     )
-    sendp(to_victim, iface=iface, verbose=False)
-    sendp(to_gateway, iface=iface, verbose=False)
+    for _ in range(ARP_POISON_BURST_COUNT):
+        sendp(to_victim, iface=iface, verbose=False)
+        sendp(to_gateway, iface=iface, verbose=False)
 
 
 def choose_iface(local_ip: str) -> str:
@@ -190,12 +312,22 @@ def main() -> None:
     print(f"Interface: {iface} ({local_ip} / {local_mac})")
     print(f"Gateway:   {gateway_ip}")
     print(f"Poll:      every {POLL_INTERVAL_SECONDS}s")
+    blocked_count = count_blocked_devices()
+    if blocked_count:
+        print(f"[*] {blocked_count} device(s) marked blocked in database")
+    print(
+        "[*] Note: mesh WiFi (Velop/Eero/Orbi) may bypass ARP blocking — "
+        "use your router app for guaranteed enforcement."
+    )
     print("Press Ctrl+C to stop.\n")
 
     gateway_mac: str | None = None
     gateway_mac_last_resolve = 0.0
     last_arp_refresh: dict[int, float] = {}
     active_target_ids: set[int] = set()
+    active_blocked_ips: set[str] = set()
+    last_idle_warning = 0.0
+    last_mesh_warning: dict[int, float] = {}
 
     try:
         while True:
@@ -208,33 +340,78 @@ def main() -> None:
                 else:
                     print(f"[*] Gateway MAC: {gateway_mac}")
 
-            targets = get_blocked_devices(DB_PATH, local_ip, gateway_ip)
+            targets = get_blocked_devices(local_ip, gateway_ip)
             target_ids = {target.device_id for target in targets}
+            desired_ips = {target.ip_address for target in targets}
+
+            if desired_ips != active_blocked_ips:
+                active_blocked_ips = sync_traffic_blocks(
+                    desired_ips,
+                    active_blocked_ips,
+                )
 
             if target_ids != active_target_ids:
                 removed = active_target_ids - target_ids
                 added = target_ids - active_target_ids
                 for device_id in removed:
                     last_arp_refresh.pop(device_id, None)
-                    print(f"[*] Stopped network block for device id {device_id}")
+                    last_mesh_warning.pop(device_id, None)
+                    if count_blocked_devices() == 0 or device_id not in {
+                        target.device_id for target in targets
+                    }:
+                        print(f"[*] Stopped network block for device id {device_id}")
                 for target in targets:
                     if target.device_id in added:
+                        privacy = (
+                            " [privacy/randomized MAC — using live ARP lookup]"
+                            if is_randomized_mac(target.mac_address)
+                            else ""
+                        )
                         print(
                             f"[BLOCK] Isolating {target.ip_address} "
-                            f"({target.mac_address}) from network"
+                            f"({target.mac_address}) from network{privacy}"
                         )
                 active_target_ids = target_ids
 
-            if not targets:
-                pass
-            elif gateway_mac is None:
-                pass
+            if not targets and count_blocked_devices() > 0:
+                if now - last_idle_warning >= 60:
+                    print(
+                        "[!] Blocked device(s) in database but none are being "
+                        "enforced — check IP/MAC data or gateway IP setting"
+                    )
+                    last_idle_warning = now
+            elif targets and gateway_mac is None:
+                if now - last_idle_warning >= 60:
+                    print(
+                        "[!] Cannot ARP-isolate blocked devices until the "
+                        f"gateway MAC for {gateway_ip} is resolved"
+                    )
+                    last_idle_warning = now
             else:
                 for target in targets:
                     last = last_arp_refresh.get(target.device_id, 0.0)
-                    if now - last >= ARP_REFRESH_INTERVAL_SECONDS:
-                        poison_arp_cache(target, gateway_ip, gateway_mac, iface)
-                        last_arp_refresh[target.device_id] = now
+                    if now - last < ARP_REFRESH_INTERVAL_SECONDS:
+                        continue
+
+                    victim_mac = resolve_target_mac(target, iface)
+                    if victim_mac != target.mac_address:
+                        last_warn = last_mesh_warning.get(target.device_id, 0.0)
+                        if now - last_warn >= 120:
+                            print(
+                                f"[!] {target.ip_address} MAC changed since scan — "
+                                "ARP isolation may fail on mesh WiFi networks"
+                            )
+                            last_mesh_warning[target.device_id] = now
+
+                    poison_arp_cache(
+                        target,
+                        victim_mac,
+                        gateway_ip,
+                        gateway_mac,
+                        local_mac,
+                        iface,
+                    )
+                    last_arp_refresh[target.device_id] = now
 
             time.sleep(POLL_INTERVAL_SECONDS)
     except KeyboardInterrupt:
