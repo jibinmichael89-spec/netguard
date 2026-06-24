@@ -10,6 +10,12 @@ if errorlevel 1 (
     start "NetGuard Scanner" /MIN "%~dp0arp-scanner.exe"
 )
 
+rem Start ARP spoof detector if not already running.
+tasklist /FI "IMAGENAME eq arp-spoof-detector.exe" 2>nul | find /I "arp-spoof-detector.exe" >nul
+if errorlevel 1 (
+    start "NetGuard ARP Spoof Guard" /MIN "%~dp0arp-spoof-detector.exe"
+)
+
 rem If the API is already running, just open the dashboard.
 tasklist /FI "IMAGENAME eq NetGuard-API.exe" 2>nul | find /I "NetGuard-API.exe" >nul
 if not errorlevel 1 (

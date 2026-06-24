@@ -243,6 +243,210 @@ def rows_to_dicts(rows: list[sqlite3.Row]) -> list[dict]:
     return [dict(row) for row in rows]
 
 
+def _parse_iso_timestamp(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _safe_scalar(conn: sqlite3.Connection, query: str) -> str | int | None:
+    """Run a query and return the first column of the first row, or None."""
+    try:
+        row = conn.execute(query).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if row is None or row[0] is None:
+        return None
+    return row[0]
+
+
+def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
+def _detector_runtime_status(
+    last_activity: str | None,
+    stale_seconds: int,
+    *,
+    optional: bool,
+) -> str:
+    """
+    Classify a background service as active, stale, inactive, or standby.
+
+    Core services with no recent activity are inactive; optional services
+    that have never reported are standby.
+    """
+    parsed = _parse_iso_timestamp(
+        last_activity if isinstance(last_activity, str) else None
+    )
+    if parsed is None:
+        return "standby" if optional else "inactive"
+
+    age_seconds = (datetime.now(timezone.utc) - parsed).total_seconds()
+    if age_seconds > stale_seconds:
+        return "stale"
+    return "active"
+
+
+MONITORING_DETECTORS: tuple[dict, ...] = (
+    {
+        "id": "arp_scanner",
+        "name": "Device & Port Scanner",
+        "description": "Discovers LAN devices and scans open ports",
+        "optional": False,
+        "stale_seconds": 90,
+    },
+    {
+        "id": "risk_scorer",
+        "name": "Risk Scorer",
+        "description": "Calculates composite security risk scores",
+        "optional": False,
+        "stale_seconds": 660,
+    },
+    {
+        "id": "arp_spoof",
+        "name": "ARP Spoof Guard",
+        "description": "Watches for unexpected MAC address changes",
+        "optional": True,
+        "stale_seconds": 45,
+    },
+    {
+        "id": "dns_monitor",
+        "name": "DNS Monitor",
+        "description": "Captures DNS queries from your network",
+        "optional": True,
+        "stale_seconds": 600,
+    },
+    {
+        "id": "rogue_dhcp",
+        "name": "Rogue DHCP Guard",
+        "description": "Detects unauthorized DHCP servers",
+        "optional": True,
+        "stale_seconds": 3600,
+    },
+    {
+        "id": "inbound",
+        "name": "Inbound Connection Guard",
+        "description": "Alerts on unexpected incoming connections",
+        "optional": True,
+        "stale_seconds": 120,
+    },
+)
+
+
+def _monitoring_last_activity(
+    conn: sqlite3.Connection, detector_id: str
+) -> str | None:
+    """Infer the most recent activity timestamp for a background detector."""
+    if detector_id == "arp_scanner":
+        device_scan = _safe_scalar(conn, "SELECT MAX(last_seen) FROM devices")
+        port_scan = _safe_scalar(conn, "SELECT MAX(scanned_at) FROM open_ports")
+        candidates = [
+            ts
+            for ts in (device_scan, port_scan)
+            if isinstance(ts, str) and ts
+        ]
+        return max(candidates) if candidates else None
+
+    if detector_id == "risk_scorer":
+        value = _safe_scalar(conn, "SELECT MAX(risk_calculated_at) FROM devices")
+        return value if isinstance(value, str) else None
+
+    if detector_id == "arp_spoof":
+        if not _table_exists(conn, "mac_history"):
+            return None
+        value = _safe_scalar(conn, "SELECT MAX(last_verified) FROM mac_history")
+        return value if isinstance(value, str) else None
+
+    if detector_id == "dns_monitor":
+        value = _safe_scalar(conn, "SELECT MAX(timestamp) FROM dns_queries")
+        return value if isinstance(value, str) else None
+
+    if detector_id == "rogue_dhcp":
+        if not _table_exists(conn, "dhcp_servers"):
+            return None
+        value = _safe_scalar(conn, "SELECT MAX(last_seen) FROM dhcp_servers")
+        return value if isinstance(value, str) else None
+
+    if detector_id == "inbound":
+        value = _safe_scalar(
+            conn,
+            """
+            SELECT MAX(timestamp) FROM alerts
+            WHERE alert_type = 'inbound_connection'
+            """,
+        )
+        return value if isinstance(value, str) else None
+
+    return None
+
+
+def _build_monitoring_status(conn: sqlite3.Connection) -> dict:
+    now = datetime.now(timezone.utc)
+    last_device_scan = _safe_scalar(conn, "SELECT MAX(last_seen) FROM devices")
+    online_devices = _safe_scalar(
+        conn,
+        "SELECT COUNT(*) FROM devices WHERE status = 'online'",
+    )
+    detectors: list[dict] = []
+
+    for spec in MONITORING_DETECTORS:
+        last_activity = _monitoring_last_activity(conn, spec["id"])
+        status = _detector_runtime_status(
+            last_activity if isinstance(last_activity, str) else None,
+            spec["stale_seconds"],
+            optional=spec["optional"],
+        )
+
+        parsed = _parse_iso_timestamp(
+            last_activity if isinstance(last_activity, str) else None
+        )
+        age_seconds = (
+            int((now - parsed).total_seconds()) if parsed is not None else None
+        )
+
+        detectors.append(
+            {
+                "id": spec["id"],
+                "name": spec["name"],
+                "description": spec["description"],
+                "optional": spec["optional"],
+                "status": status,
+                "last_activity": last_activity,
+                "age_seconds": age_seconds,
+            }
+        )
+
+    core_active = sum(
+        1
+        for detector in detectors
+        if not detector["optional"] and detector["status"] == "active"
+    )
+    core_total = sum(1 for detector in detectors if not detector["optional"])
+
+    if core_active == core_total and core_total > 0:
+        overall = "watching"
+    elif core_active > 0:
+        overall = "degraded"
+    else:
+        overall = "offline"
+
+    return {
+        "timestamp": now.isoformat(),
+        "overall_status": overall,
+        "last_device_scan": last_device_scan,
+        "online_device_count": int(online_devices or 0),
+        "detectors": detectors,
+    }
+
+
 def _port_risk_weight(port: int, risk_rules: dict | None = None) -> int:
     """Look up per-port risk weight from risk_rules.json port_risk_weights."""
     rules = risk_rules if risk_rules is not None else get_risk_rules()
@@ -454,6 +658,7 @@ def api_info() -> dict:
             "GET /alerts",
             "GET /alerts/security",
             "GET /alerts/security/critical",
+            "GET /monitoring/status",
             "GET /inbound/{device_ip}",
             "GET /dhcp/servers",
             "GET /dns",
@@ -1237,6 +1442,21 @@ else:
         "WARNING: Dashboard files not found in the application bundle. "
         "Rebuild NetGuard-API.exe with the dashboard static assets included."
     )
+
+
+@app.get("/monitoring/status")
+def monitoring_status() -> dict:
+    """
+    Return inferred health of background scanners and detectors.
+
+    Activity timestamps are derived from database writes so the dashboard can
+    show that monitoring is running even when no alerts are present.
+    """
+    conn = get_db_connection()
+    try:
+        return _build_monitoring_status(conn)
+    finally:
+        conn.close()
 
 
 @app.get("/health")

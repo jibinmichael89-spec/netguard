@@ -1,0 +1,16 @@
+[Unit]
+Description=NetGuard ARP Spoof Detector
+After=network-online.target netguard-arp-scanner.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=netguard
+WorkingDirectory=/opt/netguard
+EnvironmentFile=/etc/netguard/netguard.env
+ExecStart=/opt/netguard/venv/bin/python daemon/detection/arp_spoof_detector.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=netguard.target

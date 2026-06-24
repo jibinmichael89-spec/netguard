@@ -104,6 +104,18 @@ Each device record includes:
 - Hostname resolution depends on reverse DNS being configured on your network.
 - The API returns HTTP 503 until the scanner has created `netguard.db`.
 
+## Installation packages
+
+**Raspberry Pi:** see `install/pi/README.md` for one-step systemd install and `install/pi/NetGuard-Pi-Install-Guide.pdf`.
+
+**Windows:** build `NetGuard-Setup.exe` (v1.1.0) with:
+
+```powershell
+.\build\windows\build-installer.ps1
+```
+
+The installer bundles the API, ARP scanner, ARP spoof guard, and dashboard. Launch **NetGuard** from the Start Menu to open the dashboard.
+
 ## Network Blocking (disconnect devices)
 
 See `install/pi/README.md` for **one-step Raspberry Pi installation** with systemd auto-start.

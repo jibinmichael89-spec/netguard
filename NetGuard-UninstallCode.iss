@@ -8,6 +8,8 @@ begin
     ewWaitUntilTerminated, ResultCode);
   Exec('taskkill.exe', '/F /IM arp-scanner.exe', '', SW_HIDE,
     ewWaitUntilTerminated, ResultCode);
+  Exec('taskkill.exe', '/F /IM arp-spoof-detector.exe', '', SW_HIDE,
+    ewWaitUntilTerminated, ResultCode);
 end;
 
 function RunRegisteredUninstaller: Boolean;

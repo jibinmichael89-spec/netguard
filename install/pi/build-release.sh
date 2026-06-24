@@ -44,10 +44,17 @@ rsync -a \
     --exclude 'netguard.db' \
     "$ROOT/" "$STAGING/"
 
-# Top-level install.sh for convenience after extract
+# Top-level install scripts for convenience after extract
 cp "$ROOT/install/pi/install.sh" "$STAGING/install.sh"
 cp "$ROOT/install/pi/uninstall.sh" "$STAGING/uninstall.sh"
 chmod +x "$STAGING/install.sh" "$STAGING/uninstall.sh"
+
+# Include PDF install guide when present
+if [[ -f "$ROOT/install/pi/NetGuard-Pi-Install-Guide.pdf" ]]; then
+    mkdir -p "$STAGING/install/pi"
+    cp "$ROOT/install/pi/NetGuard-Pi-Install-Guide.pdf" "$STAGING/install/pi/"
+    cp "$ROOT/install/pi/NetGuard-Pi-Install-Guide.md" "$STAGING/install/pi/" 2>/dev/null || true
+fi
 
 mkdir -p "$ROOT/dist"
 tar -czf "$OUTPUT" -C "$STAGING/.." "NetGuard-pi"
