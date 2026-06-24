@@ -1,0 +1,8 @@
+[Unit]
+Description=NetGuard Home Network Security Monitor
+Documentation=file:///opt/netguard/README.md
+Wants=netguard-api.service netguard-arp-scanner.service netguard-risk-scorer.service netguard-dns-monitor.service
+After=network-online.target
+
+[Install]
+WantedBy=multi-user.target

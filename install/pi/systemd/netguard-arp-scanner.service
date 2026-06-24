@@ -1,0 +1,16 @@
+[Unit]
+Description=NetGuard ARP Network Scanner (devices, ports)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/netguard
+EnvironmentFile=/etc/netguard/netguard.env
+ExecStart=/opt/netguard/venv/bin/python daemon/scanner/arp_scanner.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=netguard.target
