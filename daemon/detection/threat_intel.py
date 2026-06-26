@@ -154,14 +154,30 @@ def block_domain(
     conn.close()
 
 
+def _load_install_env() -> None:
+    """Load Pi production env when running manually under sudo."""
+    if os.environ.get("NETGUARD_DB_PATH"):
+        return
+    env_file = os.environ.get("NETGUARD_ENV_FILE", "/etc/netguard/netguard.env")
+    if not os.path.isfile(env_file):
+        return
+    with open(env_file, encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            os.environ.setdefault(key.strip(), value.strip())
+
+
 if __name__ == "__main__":
     _configure_daemon_path()
+    _load_install_env()
+    from database import init_netguard_database
     from db_path import resolve_db_path
-    from schema_extensions import apply_schema_extensions
 
     db = resolve_db_path(str(PROJECT_ROOT))
-    conn = sqlite3.connect(db)
-    apply_schema_extensions(conn)
-    conn.close()
+    init_netguard_database(db)
+    print(f"Using database: {db}")
     total = update_threat_intel(db)
     print(f"Threat intel updated: {total} domains")
