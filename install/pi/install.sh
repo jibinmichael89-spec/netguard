@@ -91,10 +91,28 @@ setup_python_venv() {
     chown -R "$NETGUARD_USER:$NETGUARD_GROUP" "$INSTALL_DIR/venv"
 }
 
+dashboard_assets_ok() {
+    local html="$INSTALL_DIR/api/static/index.html"
+    local asset
+
+    [[ -f "$html" ]] || return 1
+    grep -q 'assets/' "$html" 2>/dev/null || return 1
+
+    while IFS= read -r asset; do
+        [[ -n "$asset" ]] || continue
+        asset="${asset#/}"
+        if [[ ! -f "$INSTALL_DIR/api/static/$asset" ]]; then
+            warn "Missing dashboard asset: api/static/$asset"
+            return 1
+        fi
+    done < <(grep -oE '/assets/[^"'"'"' ]+' "$html" | sort -u)
+
+    return 0
+}
+
 build_dashboard() {
-    if [[ -f "$INSTALL_DIR/api/static/index.html" ]] \
-        && grep -q 'assets/' "$INSTALL_DIR/api/static/index.html" 2>/dev/null; then
-        log "Dashboard static assets already present — skipping npm build"
+    if dashboard_assets_ok; then
+        log "Dashboard static assets verified — skipping npm build"
         return
     fi
 
@@ -192,6 +210,13 @@ install_systemd_units() {
     systemctl daemon-reload
 }
 
+configure_firewall() {
+    if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -qi "Status: active"; then
+        log "Opening firewall port 8000 for dashboard access ..."
+        ufw allow 8000/tcp comment 'NetGuard dashboard' >/dev/null 2>&1 || true
+    fi
+}
+
 enable_services() {
     log "Enabling NetGuard services (start on boot) ..."
     systemctl enable netguard.target
@@ -211,6 +236,31 @@ enable_services() {
 
     # Optional — mesh networks may limit effectiveness
     systemctl disable --now netguard-network-blocker.service 2>/dev/null || true
+}
+
+verify_installation() {
+    log "Verifying API and dashboard ..."
+    sleep 2
+
+    if ! systemctl is-active --quiet netguard-api.service; then
+        warn "netguard-api.service is not running — check: sudo journalctl -u netguard-api -n 40 --no-pager"
+        return 1
+    fi
+
+    local health
+    health="$(curl -fsS --max-time 5 http://127.0.0.1:8000/health 2>/dev/null || true)"
+    if [[ -z "$health" ]]; then
+        warn "API not responding on port 8000 — check: sudo systemctl status netguard-api"
+        return 1
+    fi
+
+    if ! grep -q '"dashboard_bundled": true' <<<"$health"; then
+        warn "API is up but dashboard files are missing — re-run install.sh to rebuild the UI"
+        return 1
+    fi
+
+    log "Dashboard ready at http://$(hostname -I 2>/dev/null | awk '{print $1}'):8000"
+    return 0
 }
 
 print_summary() {
@@ -265,7 +315,9 @@ main() {
     install_env_file
     migrate_existing_database
     install_systemd_units
+    configure_firewall
     enable_services
+    verify_installation || true
     print_summary
 }
 
