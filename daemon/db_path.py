@@ -1,6 +1,7 @@
 """Shared SQLite database path resolution for dev and PyInstaller builds."""
 
 import os
+import sqlite3
 import sys
 
 
@@ -67,3 +68,17 @@ def resolve_db_path(project_root: str | None = None) -> str:
         os.path.join(os.path.dirname(__file__), "..")
     )
     return os.path.join(root, "netguard.db")
+
+
+def open_db_connection(db_path: str, timeout: float = 30.0) -> sqlite3.Connection:
+    """
+    Open SQLite with settings suited to multi-process NetGuard daemons.
+
+    WAL mode and a long busy timeout reduce 'database is locked' errors when
+    the API and scanners are running during maintenance scripts.
+    """
+    ensure_db_directory(db_path)
+    conn = sqlite3.connect(db_path, timeout=timeout)
+    conn.execute("PRAGMA busy_timeout = 60000")
+    conn.execute("PRAGMA journal_mode = WAL")
+    return conn
