@@ -1,0 +1,13 @@
+[Unit]
+Description=NetGuard Threat Intelligence Feed Updater
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=netguard
+WorkingDirectory=/opt/netguard
+EnvironmentFile=/etc/netguard/netguard.env
+ExecStart=/opt/netguard/venv/bin/python daemon/detection/threat_intel.py
+
+[Install]
+WantedBy=multi-user.target

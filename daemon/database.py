@@ -92,5 +92,17 @@ def init_netguard_database(db_path: str) -> None:
         )
         """
     )
+    from schema_extensions import apply_schema_extensions
+
+    apply_schema_extensions(conn)
     conn.commit()
+    conn.close()
+
+
+def apply_extended_schema(db_path: str) -> None:
+    """Open a connection and apply v1.2 schema extensions."""
+    conn = sqlite3.connect(db_path)
+    from schema_extensions import apply_schema_extensions
+
+    apply_schema_extensions(conn)
     conn.close()

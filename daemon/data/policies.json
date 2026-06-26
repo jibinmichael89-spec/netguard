@@ -1,0 +1,39 @@
+{
+  "policies": [
+    {
+      "id": "unknown_device",
+      "name": "Unknown device on network",
+      "severity": "High",
+      "description": "A device that has not been approved appeared on the LAN",
+      "enabled": true
+    },
+    {
+      "id": "open_rdp",
+      "name": "RDP port exposed",
+      "severity": "High",
+      "description": "Remote Desktop port 3389 is open on a device",
+      "enabled": true
+    },
+    {
+      "id": "open_ssh",
+      "name": "SSH port exposed",
+      "severity": "Medium",
+      "description": "SSH port 22 is open on a device",
+      "enabled": true
+    },
+    {
+      "id": "critical_risk_device",
+      "name": "Critical risk device",
+      "severity": "Critical",
+      "description": "Device composite risk score is Critical",
+      "enabled": true
+    },
+    {
+      "id": "threat_intel_dns",
+      "name": "Threat intel DNS hit",
+      "severity": "High",
+      "description": "Device queried a domain on the threat intelligence blocklist",
+      "enabled": true
+    }
+  ]
+}

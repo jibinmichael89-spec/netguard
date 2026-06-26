@@ -155,6 +155,8 @@ def save_dns_query(
     response_ip: str | None,
     is_suspicious: int,
     reason: str | None,
+    threat_intel_hit: int = 0,
+    threat_category: str | None = None,
 ) -> None:
     """Insert a single DNS query record into the database."""
     try:
@@ -164,8 +166,8 @@ def save_dns_query(
             """
             INSERT INTO dns_queries
                 (timestamp, source_ip, domain, query_type, response_ip,
-                 is_suspicious, reason)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                 is_suspicious, reason, threat_intel_hit, threat_category)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 timestamp,
@@ -175,6 +177,8 @@ def save_dns_query(
                 response_ip,
                 is_suspicious,
                 reason,
+                threat_intel_hit,
+                threat_category,
             ),
         )
         conn.commit()
@@ -344,6 +348,10 @@ def process_packet(packet) -> None:
             source_ip = packet[IP].src
             timestamp = datetime.now(timezone.utc).isoformat()
             is_suspicious, reason = check_suspicious(domain)
+            threat_hit, threat_category, threat_reason = _threat_intel_flags(domain)
+            if threat_hit:
+                is_suspicious = 1
+                reason = f"{reason}; {threat_reason}" if reason else threat_reason
             category = categorize_domain(domain)
 
             save_dns_query(
@@ -355,6 +363,8 @@ def process_packet(packet) -> None:
                 None,
                 is_suspicious,
                 reason,
+                threat_hit,
+                threat_category,
             )
             print_dns_query(timestamp, source_ip, domain, category, is_suspicious)
             return
@@ -431,6 +441,24 @@ def _is_recent_dnsmasq_duplicate(domain: str, source_ip: str, now: float) -> boo
         return False
 
 
+def _threat_intel_flags(domain: str) -> tuple[int, str | None, str | None]:
+    """Return (hit, category, extra_reason) from threat intel tables."""
+    try:
+        detection_dir = os.path.join(PROJECT_ROOT, "daemon", "detection")
+        if detection_dir not in sys.path:
+            sys.path.insert(0, detection_dir)
+        from threat_intel import is_domain_blocked, lookup_threat_domain
+
+        threat = lookup_threat_domain(DB_PATH, domain)
+        if threat or is_domain_blocked(DB_PATH, domain):
+            category = (threat or {}).get("category", "blocked")
+            matched = (threat or {}).get("matched", domain)
+            return 1, category, f"Threat intel: {matched}"
+    except ImportError:
+        pass
+    return 0, None, None
+
+
 def process_dnsmasq_query_line(line: str) -> None:
     """Parse and persist a single dnsmasq log line when it is a DNS query."""
     parsed = parse_dnsmasq_query_line(line)
@@ -443,6 +471,10 @@ def process_dnsmasq_query_line(line: str) -> None:
         return
 
     is_suspicious, reason = check_suspicious(domain)
+    threat_hit, threat_category, threat_reason = _threat_intel_flags(domain)
+    if threat_hit:
+        is_suspicious = 1
+        reason = f"{reason}; {threat_reason}" if reason else threat_reason
     category = categorize_domain(domain)
 
     save_dns_query(
@@ -454,6 +486,8 @@ def process_dnsmasq_query_line(line: str) -> None:
         None,
         is_suspicious,
         reason,
+        threat_hit,
+        threat_category,
     )
     print_dns_query(timestamp, source_ip, domain, category, is_suspicious)
 

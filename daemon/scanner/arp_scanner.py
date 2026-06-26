@@ -494,16 +494,55 @@ def upsert_device(
     existing = cursor.fetchone()
 
     if existing is None:
+        require_approval = os.environ.get("NETGUARD_REQUIRE_DEVICE_APPROVAL", "1") != "0"
+        approval_status = "pending" if require_approval else "approved"
+        is_approved = 0 if require_approval else 1
         cursor.execute(
             """
-            INSERT INTO devices
-                (ip_address, mac_address, vendor, hostname, first_seen, last_seen, status)
-            VALUES (?, ?, ?, ?, ?, ?, 'online')
+            INSERT INTO devices (
+                ip_address, mac_address, vendor, hostname,
+                first_seen, last_seen, status,
+                approval_status, is_approved
+            )
+            VALUES (?, ?, ?, ?, ?, ?, 'online', ?, ?)
             """,
-            (ip_address, mac_address, vendor, hostname, timestamp, timestamp),
+            (
+                ip_address,
+                mac_address,
+                vendor,
+                hostname,
+                timestamp,
+                timestamp,
+                approval_status,
+                is_approved,
+            ),
         )
+        try:
+            from schema_extensions import log_device_event
+
+            log_device_event(
+                conn,
+                ip_address,
+                "discovery",
+                f"New device discovered: {mac_address}",
+                details=vendor,
+            )
+        except ImportError:
+            pass
         conn.commit()
         conn.close()
+        try:
+            from notifications.notifier import notify_alert
+
+            notify_alert(
+                "Medium",
+                "new_device",
+                ip_address,
+                f"New device {mac_address} ({vendor}) needs approval",
+                db_path,
+            )
+        except ImportError:
+            pass
         return True
 
     vendor = _preserve_known_value(existing[1], vendor)

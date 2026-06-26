@@ -61,6 +61,9 @@ if os.path.isdir(_db_module_dir) and _db_module_dir not in sys.path:
 
 from db_path import resolve_db_path
 from database import init_netguard_database
+from schema_extensions import apply_schema_extensions
+
+import features as feature_routes
 
 DB_PATH = resolve_db_path(PROJECT_ROOT if not getattr(sys, "frozen", False) else None)
 PORT_INSTRUCTIONS_PATH = os.path.join(
@@ -94,7 +97,6 @@ app.add_middleware(
 )
 
 
-@app.on_event("startup")
 def _preload_risk_rules() -> None:
     """Load port risk weights once at startup for open-port API responses."""
     global _RISK_RULES
@@ -108,6 +110,14 @@ def _preload_risk_rules() -> None:
     except (OSError, json.JSONDecodeError) as exc:
         print(f"[!] Failed to load risk rules: {exc}")
         _RISK_RULES = {}
+
+
+@app.on_event("startup")
+def _startup() -> None:
+    """Load risk rules and register feature routes."""
+    _preload_risk_rules()
+    feature_routes.configure(DB_PATH, get_db_connection)
+    app.include_router(feature_routes.router)
 
 
 def get_risk_rules() -> dict:
@@ -134,6 +144,7 @@ def get_db_connection() -> sqlite3.Connection:
     _ensure_fingerprint_columns(conn)
     _ensure_risk_columns(conn)
     _ensure_inbound_alert_columns(conn)
+    apply_schema_extensions(conn)
     return conn
 
 
@@ -338,6 +349,13 @@ MONITORING_DETECTORS: tuple[dict, ...] = (
         "optional": True,
         "stale_seconds": 120,
     },
+    {
+        "id": "policy_engine",
+        "name": "Policy Engine",
+        "description": "Evaluates security policies against inventory",
+        "optional": True,
+        "stale_seconds": 660,
+    },
 )
 
 
@@ -383,6 +401,10 @@ def _monitoring_last_activity(
             WHERE alert_type = 'inbound_connection'
             """,
         )
+        return value if isinstance(value, str) else None
+
+    if detector_id == "policy_engine":
+        value = _safe_scalar(conn, "SELECT MAX(timestamp) FROM policy_violations")
         return value if isinstance(value, str) else None
 
     return None
@@ -497,6 +519,16 @@ DEVICE_RISK_FIELDS = (
     "risk_calculated_at",
 )
 
+DEVICE_PROFILE_FIELDS = (
+    "owner",
+    "profile",
+    "criticality",
+    "is_approved",
+    "approval_status",
+    "notes",
+    "site_id",
+)
+
 DEVICE_SELECT_COLUMNS = (
     "id",
     "ip_address",
@@ -511,6 +543,7 @@ DEVICE_SELECT_COLUMNS = (
     "status",
     *DEVICE_FINGERPRINT_FIELDS,
     *DEVICE_RISK_FIELDS,
+    *DEVICE_PROFILE_FIELDS,
 )
 
 DEVICE_SELECT_SQL = ", ".join(DEVICE_SELECT_COLUMNS)
@@ -1058,6 +1091,7 @@ def list_security_alerts() -> dict:
     )
     alerts = rows_to_dicts(cursor.fetchall())
     conn.close()
+    alerts = feature_routes.filter_visible_alerts(alerts)
     return {"count": len(alerts), "alerts": alerts}
 
 
