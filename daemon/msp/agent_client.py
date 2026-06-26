@@ -10,12 +10,17 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import sys
 import urllib.request
 from datetime import datetime, timezone
 
-from db_path import resolve_db_path
-
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+DAEMON_DIR = os.path.join(PROJECT_ROOT, "daemon")
+
+if DAEMON_DIR not in sys.path:
+    sys.path.insert(0, DAEMON_DIR)
+
+from db_path import resolve_db_path
 
 
 def send_heartbeat(db_path: str | None = None) -> bool:

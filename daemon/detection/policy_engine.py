@@ -6,11 +6,19 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DAEMON_DIR = PROJECT_ROOT / "daemon"
 POLICIES_PATH = PROJECT_ROOT / "daemon" / "data" / "policies.json"
+
+
+def _configure_daemon_path() -> None:
+    daemon_str = str(DAEMON_DIR)
+    if daemon_str not in sys.path:
+        sys.path.insert(0, daemon_str)
 
 
 def _load_policies() -> list[dict]:
@@ -159,6 +167,7 @@ def evaluate_policies(db_path: str) -> int:
 if __name__ == "__main__":
     import time
 
+    _configure_daemon_path()
     from db_path import resolve_db_path
     from schema_extensions import apply_schema_extensions
 

@@ -5,11 +5,19 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import sys
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DAEMON_DIR = PROJECT_ROOT / "daemon"
+
+
+def _configure_daemon_path() -> None:
+    daemon_str = str(DAEMON_DIR)
+    if daemon_str not in sys.path:
+        sys.path.insert(0, daemon_str)
 DEFAULT_FEED_URL = os.environ.get(
     "NETGUARD_THREAT_FEED_URL",
     "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts",
@@ -147,6 +155,7 @@ def block_domain(
 
 
 if __name__ == "__main__":
+    _configure_daemon_path()
     from db_path import resolve_db_path
     from schema_extensions import apply_schema_extensions
 
