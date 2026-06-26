@@ -164,17 +164,31 @@ def evaluate_policies(db_path: str) -> int:
     return new_count
 
 
+def _load_install_env() -> None:
+    if os.environ.get("NETGUARD_DB_PATH"):
+        return
+    env_file = os.environ.get("NETGUARD_ENV_FILE", "/etc/netguard/netguard.env")
+    if not os.path.isfile(env_file):
+        return
+    with open(env_file, encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            os.environ.setdefault(key.strip(), value.strip())
+
+
 if __name__ == "__main__":
     import time
 
     _configure_daemon_path()
+    _load_install_env()
+    from database import init_netguard_database
     from db_path import resolve_db_path
-    from schema_extensions import apply_schema_extensions
 
     db = resolve_db_path(str(PROJECT_ROOT))
-    conn = sqlite3.connect(db)
-    apply_schema_extensions(conn)
-    conn.close()
+    init_netguard_database(db)
 
     interval = int(os.environ.get("NETGUARD_POLICY_INTERVAL_SECONDS", "300"))
     print(f"NetGuard Policy Engine — interval {interval}s")

@@ -7,12 +7,24 @@ from datetime import datetime, timezone
 
 
 def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    if not _table_exists(conn, table):
+        return set()
     cursor = conn.cursor()
     cursor.execute(f"PRAGMA table_info({table})")
     return {row[1] for row in cursor.fetchall()}
 
 
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table,),
+    ).fetchone()
+    return row is not None
+
+
 def _add_column(conn: sqlite3.Connection, table: str, column: str, typedef: str) -> None:
+    if not _table_exists(conn, table):
+        return
     if column not in _columns(conn, table):
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {typedef}")
 
