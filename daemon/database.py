@@ -2,7 +2,7 @@
 
 import sqlite3
 
-from db_path import ensure_db_directory
+from db_path import ensure_db_directory, open_db_connection
 
 
 def _ensure_device_trust_columns(conn: sqlite3.Connection) -> None:
@@ -23,7 +23,7 @@ def _ensure_device_trust_columns(conn: sqlite3.Connection) -> None:
 def init_netguard_database(db_path: str) -> None:
     """Create core tables used by the API and daemons."""
     ensure_db_directory(db_path)
-    conn = sqlite3.connect(db_path)
+    conn = open_db_connection(db_path)
     cursor = conn.cursor()
     cursor.execute(
         """
@@ -101,7 +101,7 @@ def init_netguard_database(db_path: str) -> None:
 
 def apply_extended_schema(db_path: str) -> None:
     """Open a connection and apply v1.2 schema extensions."""
-    conn = sqlite3.connect(db_path)
+    conn = open_db_connection(db_path)
     from schema_extensions import apply_schema_extensions
 
     apply_schema_extensions(conn)
