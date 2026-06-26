@@ -63,6 +63,10 @@ from db_path import resolve_db_path
 from database import init_netguard_database
 from schema_extensions import apply_schema_extensions
 
+_api_module_dir = os.path.dirname(os.path.abspath(__file__))
+if _api_module_dir not in sys.path:
+    sys.path.insert(0, _api_module_dir)
+
 import features as feature_routes
 
 DB_PATH = resolve_db_path(PROJECT_ROOT if not getattr(sys, "frozen", False) else None)
