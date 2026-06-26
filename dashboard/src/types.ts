@@ -19,6 +19,13 @@ export interface Device {
   risk_level: "Critical" | "High" | "Medium" | "Low" | "None" | null;
   risk_factors: Array<{ weight: number; reason: string; port?: number }> | null;
   risk_calculated_at: string | null;
+  owner?: string | null;
+  profile?: string | null;
+  criticality?: string | null;
+  is_approved?: number;
+  approval_status?: "pending" | "approved" | "rejected" | string;
+  notes?: string | null;
+  site_id?: string | null;
 }
 
 export interface DeviceTagResponse {
@@ -86,6 +93,39 @@ export interface SecurityAlert {
   device_ip: string;
   description: string;
   is_acknowledged: number;
+  is_false_positive?: number;
+  snoozed_until?: string | null;
+  acknowledged_at?: string | null;
+  recommended_action?: string | null;
+}
+
+export interface DeviceTimelineEvent {
+  timestamp: string;
+  event_type: string;
+  severity: string;
+  summary: string;
+  details: Record<string, unknown>;
+}
+
+export interface DeviceTimelineResponse {
+  device_ip: string;
+  count: number;
+  events: DeviceTimelineEvent[];
+}
+
+export interface PendingDevicesResponse {
+  count: number;
+  devices: Device[];
+}
+
+export interface SecurityReportSummary {
+  generated_at: string;
+  online_devices: number;
+  pending_approval: number;
+  alerts_last_7_days: number;
+  critical_devices: number;
+  threat_intel_domains: number;
+  policy_violations_last_7_days: number;
 }
 
 export interface SecurityAlertsResponse {

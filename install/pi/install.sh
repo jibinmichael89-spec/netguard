@@ -135,6 +135,17 @@ NETGUARD_LOG_DIR=$LOG_DIR
 DNSMASQ_LOG_PATH=$LOG_DIR/dnsmasq.log
 # Uncomment and set if gateway auto-detection is wrong:
 # NETGUARD_GATEWAY_IP=192.168.1.1
+# Require approval for newly discovered devices (1=yes, 0=no)
+NETGUARD_REQUIRE_DEVICE_APPROVAL=1
+# Optional notifications (or configure via dashboard /notifications/config)
+# NETGUARD_TELEGRAM_BOT_TOKEN=
+# NETGUARD_TELEGRAM_CHAT_ID=
+# NETGUARD_ALERT_EMAIL_TO=
+# Optional API key for write endpoints
+# NETGUARD_API_KEY=
+# MSP collector (future)
+# NETGUARD_MSP_COLLECTOR_URL=
+# NETGUARD_SITE_TOKEN=
 EOF
     chmod 644 "$ENV_FILE"
 }
@@ -172,7 +183,10 @@ install_systemd_units() {
     fi
     for unit in netguard.target netguard-api.service netguard-arp-scanner.service \
         netguard-risk-scorer.service netguard-dns-monitor.service \
-        netguard-arp-spoof.service netguard-network-blocker.service; do
+        netguard-arp-spoof.service netguard-rogue-dhcp.service \
+        netguard-inbound-detector.service netguard-policy-engine.service \
+        netguard-threat-intel.service netguard-threat-intel.timer \
+        netguard-network-blocker.service; do
         install -m 644 "$systemd_dir/$unit" "/etc/systemd/system/$unit"
     done
     systemctl daemon-reload
@@ -188,6 +202,10 @@ enable_services() {
     systemctl restart netguard-risk-scorer.service
     systemctl restart netguard-dns-monitor.service
     systemctl restart netguard-arp-spoof.service
+    systemctl restart netguard-rogue-dhcp.service
+    systemctl restart netguard-inbound-detector.service
+    systemctl restart netguard-policy-engine.service
+    systemctl enable --now netguard-threat-intel.timer 2>/dev/null || true
     systemctl restart netguard-api.service
     systemctl restart netguard.target
 

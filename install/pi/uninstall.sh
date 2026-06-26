@@ -23,7 +23,8 @@ if [[ "${1:-}" == "--keep-data" ]]; then
 fi
 
 log "Stopping NetGuard services ..."
-for unit in netguard-network-blocker netguard-dns-monitor netguard-arp-spoof \
+for unit in netguard-network-blocker netguard-policy-engine netguard-inbound-detector \
+    netguard-rogue-dhcp netguard-arp-spoof netguard-dns-monitor \
     netguard-risk-scorer netguard-arp-scanner netguard-api netguard.target; do
     systemctl disable --now "$unit.service" 2>/dev/null || true
 done
@@ -31,7 +32,10 @@ done
 log "Removing systemd units ..."
 for unit in netguard.target netguard-api.service netguard-arp-scanner.service \
     netguard-risk-scorer.service netguard-dns-monitor.service \
-    netguard-arp-spoof.service netguard-network-blocker.service; do
+    netguard-arp-spoof.service netguard-rogue-dhcp.service \
+    netguard-inbound-detector.service netguard-policy-engine.service \
+    netguard-threat-intel.service netguard-threat-intel.timer \
+    netguard-network-blocker.service; do
     rm -f "/etc/systemd/system/$unit"
 done
 systemctl daemon-reload

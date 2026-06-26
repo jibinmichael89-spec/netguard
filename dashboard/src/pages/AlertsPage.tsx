@@ -93,6 +93,16 @@ export default function AlertsPage() {
     inbound: inboundDeviceCount,
   };
 
+  const handleAcknowledge = async (alertId: number) => {
+    await apiFetch(`/alerts/${alertId}/acknowledge`, { method: "PUT" });
+    fetchAlerts(false);
+  };
+
+  const handleFalsePositive = async (alertId: number) => {
+    await apiFetch(`/alerts/${alertId}/false-positive`, { method: "PUT" });
+    fetchAlerts(false);
+  };
+
   if (loading) {
     return <LoadingSpinner label="Loading security alerts..." fullPage />;
   }
@@ -187,6 +197,27 @@ export default function AlertsPage() {
                   {alert.device_ip}
                 </p>
                 <p className="mt-1 text-sm text-gray-300">{alert.description}</p>
+                {alert.recommended_action && (
+                  <p className="mt-2 text-xs text-gray-500">
+                    Recommended: {alert.recommended_action}
+                  </p>
+                )}
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleAcknowledge(alert.id)}
+                    className="rounded-lg border border-ng-border bg-ng-elevated px-3 py-1.5 text-xs font-medium text-gray-200 hover:border-ng-safe/40"
+                  >
+                    Acknowledge
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleFalsePositive(alert.id)}
+                    className="rounded-lg border border-ng-border bg-ng-elevated px-3 py-1.5 text-xs font-medium text-gray-400 hover:border-ng-warning/40"
+                  >
+                    False positive
+                  </button>
+                </div>
               </div>
             ))}
           </div>

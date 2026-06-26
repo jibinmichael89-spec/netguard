@@ -19,6 +19,7 @@ import BlockConfirmDialog from "../components/BlockConfirmDialog";
 import BlockHelpTooltip from "../components/BlockHelpTooltip";
 import PortInstructionsModal from "../components/PortInstructionsModal";
 import RiskDetailModal, { PortRiskBadge, RiskBadge } from "../components/RiskDetailModal";
+import DeviceTimeline from "../components/DeviceTimeline";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ScannerOffline from "../components/ScannerOffline";
 
@@ -108,7 +109,38 @@ export default function DeviceDetailPage() {
           body: JSON.stringify({ is_blocked: (device.is_blocked ?? 0) !== 1 }),
         },
       );
+      if ((device.is_blocked ?? 0) !== 1) {
+        await apiFetch(`/enforcement/block/${encodeURIComponent(device.ip_address)}`, {
+          method: "POST",
+        });
+      }
       setBlockModalOpen(false);
+      await fetchDevice();
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleApprove = async () => {
+    if (!device) return;
+    setActionLoading(true);
+    try {
+      await apiFetch(`/devices/${encodeURIComponent(device.ip_address)}/approve`, {
+        method: "PUT",
+      });
+      await fetchDevice();
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!device) return;
+    setActionLoading(true);
+    try {
+      await apiFetch(`/devices/${encodeURIComponent(device.ip_address)}/reject`, {
+        method: "PUT",
+      });
       await fetchDevice();
     } finally {
       setActionLoading(false);
@@ -136,6 +168,7 @@ export default function DeviceDetailPage() {
 
   const isTrusted = (device.is_trusted ?? 0) === 1;
   const isBlocked = (device.is_blocked ?? 0) === 1;
+  const isPending = device.approval_status === "pending";
 
   return (
     <div className="space-y-6">
@@ -194,6 +227,26 @@ export default function DeviceDetailPage() {
         </div>
 
         <div className="mt-6 flex flex-wrap gap-3">
+          {isPending && (
+            <>
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={handleApprove}
+                className="inline-flex items-center gap-2 rounded-lg bg-ng-safe px-4 py-2 text-sm font-semibold text-ng-bg"
+              >
+                Approve device
+              </button>
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={handleReject}
+                className="inline-flex items-center gap-2 rounded-lg border border-ng-alert/40 px-4 py-2 text-sm font-semibold text-ng-alert"
+              >
+                Reject & block
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={() => setTrustModalOpen(true)}
@@ -339,6 +392,8 @@ export default function DeviceDetailPage() {
           </div>
         )}
       </div>
+
+      <DeviceTimeline deviceIp={device.ip_address} />
 
       <ConfirmModal
         isOpen={trustModalOpen}

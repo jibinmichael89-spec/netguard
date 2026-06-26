@@ -17,6 +17,7 @@ import { DASHBOARD_REFRESH_MS, NEW_DEVICE_WINDOW_HOURS } from "../config";
 import { isRecentlyAdded } from "../utils/format";
 import StatCard from "../components/StatCard";
 import DeviceTable from "../components/DeviceTable";
+import PendingApprovalsBanner from "../components/PendingApprovalsBanner";
 import TagModal from "../components/TagModal";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ScannerOffline from "../components/ScannerOffline";
@@ -200,6 +201,8 @@ export default function DashboardPage() {
           Real-time overview of your home network security
         </p>
       </div>
+
+      <PendingApprovalsBanner />
 
       {devices.length === 0 && (
         <div className="rounded-lg border border-ng-warning/30 bg-ng-warning/10 px-4 py-3 text-sm text-ng-warning">
