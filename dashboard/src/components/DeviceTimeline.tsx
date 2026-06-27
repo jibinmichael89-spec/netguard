@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { apiFetch } from "../api";
+import { useCallback, useEffect, useState } from "react";
+import { ApiError, apiFetch } from "../api";
 import type { DeviceTimelineResponse } from "../types";
 import { formatTimestamp } from "../utils/format";
 import SeverityBadge from "./SeverityBadge";
@@ -11,43 +11,55 @@ interface DeviceTimelineProps {
 
 export default function DeviceTimeline({ deviceIp }: DeviceTimelineProps) {
   const [events, setEvents] = useState<DeviceTimelineResponse["events"]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loaded, setLoaded] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const load = async () => {
-    if (loaded) return;
+  const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await apiFetch<DeviceTimelineResponse>(
         `/devices/${encodeURIComponent(deviceIp)}/timeline`,
       );
       setEvents(res.events);
-      setLoaded(true);
+    } catch (err) {
+      setEvents([]);
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Failed to load activity timeline",
+      );
     } finally {
       setLoading(false);
     }
-  };
+  }, [deviceIp]);
+
+  useEffect(() => {
+    setEvents([]);
+    setError(null);
+    void load();
+  }, [load]);
 
   return (
     <section className="rounded-xl border border-ng-border bg-ng-card p-5">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-lg font-semibold text-white">Activity Timeline</h3>
-        {!loaded && (
+        {error && (
           <button
             type="button"
-            onClick={load}
+            onClick={() => void load()}
             className="text-sm font-medium text-ng-accent hover:underline"
           >
-            Load timeline
+            Retry
           </button>
         )}
       </div>
       {loading ? (
         <LoadingSpinner label="Loading timeline..." />
+      ) : error ? (
+        <p className="text-sm text-ng-alert">{error}</p>
       ) : events.length === 0 ? (
-        <p className="text-sm text-gray-400">
-          {loaded ? "No timeline events yet." : "Click load to fetch device activity."}
-        </p>
+        <p className="text-sm text-gray-400">No timeline events yet.</p>
       ) : (
         <div className="space-y-3">
           {events.map((event, index) => (

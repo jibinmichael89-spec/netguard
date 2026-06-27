@@ -8,6 +8,7 @@ import json
 import os
 import socket
 import sqlite3
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -289,18 +290,78 @@ def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
     return row is not None
 
 
+_DETECTOR_SERVICE_MAP: dict[str, tuple[str, str]] = {
+    "arp_scanner": ("netguard-arp-scanner.service", "arp-scanner.exe"),
+    "risk_scorer": ("netguard-risk-scorer.service", "risk-scorer.exe"),
+    "arp_spoof": ("netguard-arp-spoof.service", "arp-spoof-detector.exe"),
+    "dns_monitor": ("netguard-dns-monitor.service", "dns-monitor.exe"),
+    "rogue_dhcp": ("netguard-rogue-dhcp.service", "rogue-dhcp-detector.exe"),
+    "inbound": (
+        "netguard-inbound-detector.service",
+        "inbound-connection-detector.exe",
+    ),
+    "policy_engine": ("netguard-policy-engine.service", "policy-engine.exe"),
+}
+
+
+def _is_detector_service_running(detector_id: str) -> bool | None:
+    """Return whether the detector process/service is running, or None if unknown."""
+    entry = _DETECTOR_SERVICE_MAP.get(detector_id)
+    if entry is None:
+        return None
+
+    systemd_unit, win_process = entry
+    if sys.platform == "win32":
+        try:
+            result = subprocess.run(
+                ["tasklist", "/FI", f"IMAGENAME eq {win_process}", "/NH"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            return win_process.lower() in result.stdout.lower()
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+
+    try:
+        result = subprocess.run(
+            ["systemctl", "is-active", "--quiet", systemd_unit],
+            timeout=5,
+            check=False,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
 def _detector_runtime_status(
     last_activity: str | None,
     stale_seconds: int,
     *,
     optional: bool,
+    service_running: bool | None,
 ) -> str:
     """
-    Classify a background service as active, stale, inactive, or standby.
+    Classify a background service using process state and DB activity.
 
-    Core services with no recent activity are inactive; optional services
-    that have never reported are standby.
-    """
+    When the host OS reports service state, stopped services are ``stopped``
+    and running services with no recent DB writes are ``idle`` (not an error).
+  """
+    if service_running is False:
+        return "stopped"
+
+    if service_running is True:
+        parsed = _parse_iso_timestamp(
+            last_activity if isinstance(last_activity, str) else None
+        )
+        if parsed is None:
+            return "idle"
+        age_seconds = (datetime.now(timezone.utc) - parsed).total_seconds()
+        if age_seconds > stale_seconds:
+            return "idle"
+        return "active"
+
     parsed = _parse_iso_timestamp(
         last_activity if isinstance(last_activity, str) else None
     )
@@ -311,6 +372,17 @@ def _detector_runtime_status(
     if age_seconds > stale_seconds:
         return "stale"
     return "active"
+
+
+def _detector_is_healthy(status: str, service_running: bool | None) -> bool:
+    """True when a detector is running and not in a failed/stopped state."""
+    if service_running is False or status == "stopped":
+        return False
+    if status in ("active", "idle"):
+        return True
+    if service_running is True:
+        return True
+    return status == "active"
 
 
 MONITORING_DETECTORS: tuple[dict, ...] = (
@@ -428,10 +500,12 @@ def _build_monitoring_status(conn: sqlite3.Connection) -> dict:
 
     for spec in MONITORING_DETECTORS:
         last_activity = _monitoring_last_activity(conn, spec["id"])
+        service_running = _is_detector_service_running(spec["id"])
         status = _detector_runtime_status(
             last_activity if isinstance(last_activity, str) else None,
             spec["stale_seconds"],
             optional=spec["optional"],
+            service_running=service_running,
         )
 
         parsed = _parse_iso_timestamp(
@@ -448,6 +522,7 @@ def _build_monitoring_status(conn: sqlite3.Connection) -> dict:
                 "description": spec["description"],
                 "optional": spec["optional"],
                 "status": status,
+                "service_running": service_running,
                 "last_activity": last_activity,
                 "age_seconds": age_seconds,
             }
@@ -456,7 +531,8 @@ def _build_monitoring_status(conn: sqlite3.Connection) -> dict:
     core_active = sum(
         1
         for detector in detectors
-        if not detector["optional"] and detector["status"] == "active"
+        if not detector["optional"]
+        and _detector_is_healthy(detector["status"], detector["service_running"])
     )
     core_total = sum(1 for detector in detectors if not detector["optional"])
 
@@ -1488,10 +1564,10 @@ else:
 @app.get("/monitoring/status")
 def monitoring_status() -> dict:
     """
-    Return inferred health of background scanners and detectors.
+    Return health of background scanners and detectors.
 
-    Activity timestamps are derived from database writes so the dashboard can
-    show that monitoring is running even when no alerts are present.
+    Combines systemd/process state with database activity so optional detectors
+    show "running — no events" instead of appearing offline when idle.
     """
     conn = get_db_connection()
     try:
