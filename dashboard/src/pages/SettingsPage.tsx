@@ -12,6 +12,7 @@ import { apiFetch } from "../api";
 import type {
   NotificationConfigResponse,
   PoliciesResponse,
+  RouterConfigUpdate,
   RouterSettingsResponse,
   ThreatIntelStatusResponse,
 } from "../types";
@@ -36,7 +37,15 @@ export default function SettingsPage() {
   const [threatIntel, setThreatIntel] = useState<ThreatIntelStatusResponse | null>(null);
   const [policies, setPolicies] = useState<PoliciesResponse["policies"]>([]);
   const [routerSettings, setRouterSettings] = useState<RouterSettingsResponse | null>(null);
+  const [routerForm, setRouterForm] = useState<RouterConfigUpdate>({
+    router_type: "",
+    router_url: "",
+    router_user: "root",
+    router_password: "",
+    router_token: "",
+  });
   const [saving, setSaving] = useState(false);
+  const [restartingApi, setRestartingApi] = useState(false);
   const [updatingIntel, setUpdatingIntel] = useState(false);
 
   const load = useCallback(async () => {
@@ -53,6 +62,13 @@ export default function SettingsPage() {
       setThreatIntel(intel);
       setPolicies(policyData.policies);
       setRouterSettings(router);
+      setRouterForm({
+        router_type: router.router_type || "",
+        router_url: router.router_url || "",
+        router_user: router.router_user || "root",
+        router_password: router.router_password || "",
+        router_token: router.router_token || "",
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load settings");
     } finally {
@@ -151,6 +167,84 @@ export default function SettingsPage() {
       setMessage(result.message);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Report send failed");
+    }
+  };
+
+  const updateRouterField = (key: keyof RouterConfigUpdate, value: string) => {
+    setRouterForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const buildRouterPayload = (): RouterConfigUpdate => ({
+    router_type: routerForm.router_type?.trim() || "",
+    router_url: routerForm.router_url?.trim() || "",
+    router_user: routerForm.router_user?.trim() || "",
+    router_password:
+      routerForm.router_password === "***" ? undefined : routerForm.router_password?.trim(),
+    router_token:
+      routerForm.router_token === "***" ? undefined : routerForm.router_token?.trim(),
+  });
+
+  const waitForApiHealth = async (attempts = 20, delayMs = 1500): Promise<boolean> => {
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      try {
+        await apiFetch<{ status: string }>("/health", {}, 4000);
+        return true;
+      } catch {
+        /* API still restarting */
+      }
+    }
+    return false;
+  };
+
+  const saveRouterSettings = async (restartAfter = false) => {
+    if (restartAfter) {
+      setRestartingApi(true);
+    } else {
+      setSaving(true);
+    }
+    setError(undefined);
+    setMessage(undefined);
+    try {
+      const updated = await apiFetch<RouterSettingsResponse>("/settings/router", {
+        method: "PUT",
+        body: JSON.stringify(buildRouterPayload()),
+      });
+      setRouterSettings(updated);
+      setRouterForm({
+        router_type: updated.router_type || "",
+        router_url: updated.router_url || "",
+        router_user: updated.router_user || "root",
+        router_password: updated.router_password || "",
+        router_token: updated.router_token || "",
+      });
+
+      if (!restartAfter) {
+        setMessage("Router settings saved");
+        return;
+      }
+
+      setMessage("Settings saved — restarting API…");
+      try {
+        await apiFetch<{ message: string }>("/settings/restart-api", { method: "POST" }, 8000);
+      } catch {
+        /* connection drop is expected while the API restarts */
+      }
+
+      const healthy = await waitForApiHealth();
+      if (healthy) {
+        setMessage("Router settings saved and API restarted.");
+        await load();
+      } else {
+        setMessage(
+          "Settings saved. API is still restarting — refresh the page in a few seconds.",
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Router save failed");
+    } finally {
+      setSaving(false);
+      setRestartingApi(false);
     }
   };
 
@@ -341,32 +435,114 @@ export default function SettingsPage() {
 
       {tab === "router" && routerSettings && (
         <div className="rounded-xl border border-ng-border bg-ng-card p-6 space-y-4">
-          <h3 className="text-lg font-semibold text-white">Router enforcement</h3>
-          <p className="text-sm text-gray-400">
-            Configure on the Pi via <code className="text-ng-accent">/etc/netguard/netguard.env</code>
-            {" "}then restart NetGuard. Supports OpenWrt (ubus), Linksys JNAP pause, and custom webhooks.
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-semibold text-white">Router enforcement</h3>
+              <p className="mt-1 text-sm text-gray-400">
+                Block devices on your router when you click Block in the dashboard.
+                Supports OpenWrt, Linksys/Velop, and custom webhooks.
+              </p>
+            </div>
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-medium ${
+                routerSettings.configured
+                  ? "bg-emerald-500/10 text-emerald-400"
+                  : "bg-amber-500/10 text-amber-400"
+              }`}
+            >
+              {routerSettings.configured ? "Configured" : "Not configured"}
+            </span>
+          </div>
+
+          {routerSettings.env_overrides.length > 0 && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+              Some values in <code>/etc/netguard/netguard.env</code> override saved settings (
+              {routerSettings.env_overrides.join(", ")}). Remove them from the env file to use
+              the dashboard values below.
+            </div>
+          )}
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block text-sm sm:col-span-2">
+              <span className="text-gray-400">Router type</span>
+              <select
+                className="mt-1 w-full rounded-lg border border-ng-border bg-ng-bg px-3 py-2 text-white"
+                value={routerForm.router_type || ""}
+                onChange={(e) => updateRouterField("router_type", e.target.value)}
+              >
+                <option value="">Disabled (dashboard-only block)</option>
+                {routerSettings.supported_types.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm sm:col-span-2">
+              <span className="text-gray-400">Router URL</span>
+              <input
+                className="mt-1 w-full rounded-lg border border-ng-border bg-ng-bg px-3 py-2 text-white"
+                value={routerForm.router_url || ""}
+                onChange={(e) => updateRouterField("router_url", e.target.value)}
+                placeholder="http://192.168.1.1"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="text-gray-400">Username</span>
+              <input
+                className="mt-1 w-full rounded-lg border border-ng-border bg-ng-bg px-3 py-2 text-white"
+                value={routerForm.router_user || ""}
+                onChange={(e) => updateRouterField("router_user", e.target.value)}
+                placeholder="root"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="text-gray-400">Password</span>
+              <input
+                type="password"
+                className="mt-1 w-full rounded-lg border border-ng-border bg-ng-bg px-3 py-2 text-white"
+                value={routerForm.router_password || ""}
+                onChange={(e) => updateRouterField("router_password", e.target.value)}
+                placeholder="Router admin password"
+              />
+            </label>
+            <label className="block text-sm sm:col-span-2">
+              <span className="text-gray-400">API token (optional)</span>
+              <input
+                type="password"
+                className="mt-1 w-full rounded-lg border border-ng-border bg-ng-bg px-3 py-2 text-white"
+                value={routerForm.router_token || ""}
+                onChange={(e) => updateRouterField("router_token", e.target.value)}
+                placeholder="OpenWrt ubus token or webhook bearer token"
+              />
+            </label>
+          </div>
+
+          <p className="text-xs text-gray-500">
+            OpenWrt uses ubus login or token. Linksys/Velop uses JNAP with admin password.
+            Custom sends a JSON webhook on block/unblock.
           </p>
-          <dl className="grid gap-3 sm:grid-cols-2 text-sm">
-            <div>
-              <dt className="text-gray-500">Type</dt>
-              <dd className="text-white">{routerSettings.router_type || "Not set"}</dd>
-            </div>
-            <div>
-              <dt className="text-gray-500">URL</dt>
-              <dd className="text-white">{routerSettings.router_url || "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-gray-500">Configured</dt>
-              <dd className={routerSettings.configured ? "text-emerald-400" : "text-amber-400"}>
-                {routerSettings.configured ? "Yes" : "No — DB-only block"}
-              </dd>
-            </div>
-          </dl>
-          <ul className="list-disc pl-5 text-xs text-gray-500 space-y-1">
-            {routerSettings.env_keys.map((key) => (
-              <li key={key}>{key}</li>
-            ))}
-          </ul>
+
+          <div className="flex flex-wrap gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => void saveRouterSettings(false)}
+              disabled={saving || restartingApi}
+              className="flex items-center gap-2 rounded-lg bg-ng-accent px-4 py-2 text-sm font-medium text-white hover:bg-ng-accent/90 disabled:opacity-50"
+            >
+              <Save className="h-4 w-4" />
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={() => void saveRouterSettings(true)}
+              disabled={saving || restartingApi}
+              className="flex items-center gap-2 rounded-lg border border-ng-accent/40 bg-ng-accent/10 px-4 py-2 text-sm font-medium text-ng-accent hover:bg-ng-accent/20 disabled:opacity-50"
+            >
+              <RefreshCw className={`h-4 w-4 ${restartingApi ? "animate-spin" : ""}`} />
+              Save &amp; restart API
+            </button>
+          </div>
         </div>
       )}
 
