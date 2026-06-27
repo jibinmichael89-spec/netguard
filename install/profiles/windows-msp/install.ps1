@@ -28,6 +28,10 @@ $Register = Join-Path $InstallDir "Register-NetGuard-AutoStart.ps1"
 if (-not (Test-Path $Register)) {
     $Register = Join-Path $RepoRoot "build\windows\Register-NetGuard-AutoStart.ps1"
 }
+$RestartApi = Join-Path $RepoRoot "scripts\restart-api.ps1"
+if (Test-Path $RestartApi) {
+    Copy-Item $RestartApi (Join-Path $InstallDir "restart-api.ps1") -Force
+}
 & $Register -InstallDir $InstallDir -Profile msp
 
 Write-Host "[*] Windows MSP profile installed with auto-start"

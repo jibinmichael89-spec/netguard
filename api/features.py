@@ -126,6 +126,81 @@ def _save_router_config(body: RouterConfigUpdate) -> list[str]:
     return updated
 
 
+def _restart_api_windows() -> dict:
+    import subprocess
+
+    create_no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+    detached = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+    new_group = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+    creation_flags = detached | new_group | create_no_window
+
+    if getattr(sys, "frozen", False):
+        install_dir = os.path.dirname(sys.executable)
+        restart_script = os.path.join(install_dir, "restart-api.ps1")
+    else:
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        install_dir = project_root
+        restart_script = os.path.join(project_root, "scripts", "restart-api.ps1")
+
+    if os.path.isfile(restart_script):
+        command = [
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-WindowStyle",
+            "Hidden",
+            "-File",
+            restart_script,
+            "-InstallDir",
+            install_dir,
+        ]
+    else:
+        api_exe = os.path.join(install_dir, "NetGuard-API.exe")
+        if not os.path.isfile(api_exe):
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "restart-api.ps1 not found. Re-run the Windows install profile "
+                    "or rebuild NetGuard-Setup.exe."
+                ),
+            )
+        ps_command = (
+            "Start-Sleep -Seconds 2; "
+            "Stop-Process -Name NetGuard-API -Force -ErrorAction SilentlyContinue; "
+            "Start-Sleep -Seconds 1; "
+            f"Start-Process -FilePath '{api_exe}' -WorkingDirectory '{install_dir}' "
+            "-WindowStyle Hidden"
+        )
+        command = [
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            ps_command,
+        ]
+
+    try:
+        subprocess.Popen(
+            command,
+            creationflags=creation_flags,
+            close_fds=True,
+        )
+    except OSError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Could not restart API: {exc}",
+        ) from exc
+
+    return {
+        "success": True,
+        "message": "API restart initiated. The dashboard will reconnect shortly.",
+    }
+
+
 @router.put("/alerts/{alert_id}/acknowledge", dependencies=[Depends(_optional_api_key)])
 def acknowledge_alert(alert_id: int) -> dict:
     conn = _conn()
@@ -597,13 +672,7 @@ def restart_api_service() -> dict:
     import subprocess
 
     if sys.platform == "win32":
-        return {
-            "success": False,
-            "message": (
-                "On Windows, restart NetGuard-API from Task Scheduler "
-                "or reboot the PC."
-            ),
-        }
+        return _restart_api_windows()
 
     restart_script = "/opt/netguard/scripts/restart-api.sh"
     if os.path.isfile(restart_script):
