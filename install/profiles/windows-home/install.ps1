@@ -2,37 +2,25 @@
 <#
 .SYNOPSIS
   Install NetGuard Windows Home profile with auto-start scheduled tasks.
+.EXAMPLE
+  .\install\profiles\windows-home\install.ps1
+.EXAMPLE
+  .\install\profiles\windows-home\install.ps1 -InstallDir "C:\Program Files\NetGuard"
 #>
 param(
-    [string]$InstallDir = ""
+    [string]$InstallDir = "",
+    [string]$SourceDir = ""
 )
 
 $ErrorActionPreference = "Stop"
 $ProfileDir = $PSScriptRoot
-$RepoRoot = Resolve-Path (Join-Path $ProfileDir "..\..\..")
+$RepoRoot = (Resolve-Path (Join-Path $ProfileDir "..\..\..")).Path
 
-if (-not $InstallDir) {
-    $InstallDir = Join-Path $RepoRoot "build\exe"
-}
-if (-not (Test-Path $InstallDir)) {
-    $InstallDir = "${env:ProgramFiles}\NetGuard"
-}
+. (Join-Path (Split-Path $ProfileDir -Parent) "Install-WindowsProfile.ps1")
 
-$DataDir = Join-Path $env:ProgramData "NetGuard"
-New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
-Copy-Item (Join-Path $ProfileDir "netguard.env") (Join-Path $DataDir "netguard.env") -Force
-Copy-Item (Join-Path $ProfileDir "netguard.env") (Join-Path $InstallDir "netguard.env") -Force -ErrorAction SilentlyContinue
-
-$Register = Join-Path $InstallDir "Register-NetGuard-AutoStart.ps1"
-if (-not (Test-Path $Register)) {
-    $Register = Join-Path $RepoRoot "build\windows\Register-NetGuard-AutoStart.ps1"
-}
-$RestartApi = Join-Path $RepoRoot "scripts\restart-api.ps1"
-if (Test-Path $RestartApi) {
-    Copy-Item $RestartApi (Join-Path $InstallDir "restart-api.ps1") -Force
-}
-& $Register -InstallDir $InstallDir -Profile home
-
-Write-Host "[*] Windows Home profile installed with auto-start"
-Write-Host "    Dashboard: http://localhost:8000"
-Write-Host "    Run: $InstallDir\START-NetGuard.bat"
+Install-NetGuardWindowsProfile `
+    -Profile home `
+    -ProfileDir $ProfileDir `
+    -RepoRoot $RepoRoot `
+    -InstallDir $InstallDir `
+    -SourceDir $SourceDir

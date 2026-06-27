@@ -25,16 +25,24 @@ Your MSP operator must give you:
 2. Administrator PowerShell from repo root:
 
 ```powershell
-.\install\profiles\windows-msp\install.ps1 -InstallDir "C:\Program Files\NetGuard"
+cd C:\Users\jibin\netguard
+.\build\windows\build-installer.ps1
+.\install\profiles\windows-msp\install.ps1
 ```
+
+Installs to `C:\Program Files\NetGuard` by default.
 
 3. Run `START-NetGuard.bat` and open **http://localhost:8000**
 
 ## What gets configured
 
 - Same local dashboard and scanners as Home profile
+- Install dir: `C:\Program Files\NetGuard`
+- Database: `%ProgramData%\NetGuard\netguard.db`
 - **Scheduled task** `NetGuard MSP Heartbeat` runs every 5 minutes
 - Heartbeat POSTs to `{collector}/msp/api/v1/heartbeat`
+- **Settings → Router** — configure router enforcement in the dashboard
+- **Save & restart API** — applies settings without manual restart
 
 ## MSP central server (for operators)
 
