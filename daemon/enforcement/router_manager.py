@@ -13,6 +13,58 @@ from dataclasses import dataclass
 
 from schema_extensions import log_device_event
 
+ROUTER_CONFIG_KEYS: tuple[str, ...] = (
+    "router_type",
+    "router_url",
+    "router_user",
+    "router_password",
+    "router_token",
+)
+
+_ROUTER_ENV_KEYS: dict[str, str] = {
+    "router_type": "NETGUARD_ROUTER_TYPE",
+    "router_url": "NETGUARD_ROUTER_URL",
+    "router_user": "NETGUARD_ROUTER_USER",
+    "router_password": "NETGUARD_ROUTER_PASSWORD",
+    "router_token": "NETGUARD_ROUTER_TOKEN",
+}
+
+
+def _router_setting(db_path: str | None, key: str, *, default: str = "") -> str:
+    """Read a router setting from environment (preferred) or notification_config."""
+    env_name = _ROUTER_ENV_KEYS.get(key)
+    if env_name:
+        env_value = os.environ.get(env_name, "").strip()
+        if env_value:
+            return env_value.lower() if key == "router_type" else env_value
+
+    if not db_path:
+        return default
+
+    try:
+        conn = sqlite3.connect(db_path)
+        row = conn.execute(
+            "SELECT value FROM notification_config WHERE key = ?",
+            (key,),
+        ).fetchone()
+        conn.close()
+        if row and row[0]:
+            value = str(row[0]).strip()
+            return value.lower() if key == "router_type" else value
+    except sqlite3.Error:
+        pass
+
+    return default
+
+
+def _router_env_overrides(db_path: str | None) -> list[str]:
+    """Return config keys currently overridden by environment variables."""
+    overrides: list[str] = []
+    for key, env_name in _ROUTER_ENV_KEYS.items():
+        if os.environ.get(env_name, "").strip():
+            overrides.append(key)
+    return overrides
+
 
 @dataclass
 class EnforcementResult:
@@ -30,11 +82,11 @@ class RouterManager:
 
     def __init__(self, db_path: str) -> None:
         self.db_path = db_path
-        self.router_type = os.environ.get("NETGUARD_ROUTER_TYPE", "").strip().lower()
-        self.router_url = os.environ.get("NETGUARD_ROUTER_URL", "").strip()
-        self.router_token = os.environ.get("NETGUARD_ROUTER_TOKEN", "").strip()
-        self.router_user = os.environ.get("NETGUARD_ROUTER_USER", "root").strip()
-        self.router_password = os.environ.get("NETGUARD_ROUTER_PASSWORD", "").strip()
+        self.router_type = _router_setting(db_path, "router_type")
+        self.router_url = _router_setting(db_path, "router_url")
+        self.router_token = _router_setting(db_path, "router_token")
+        self.router_user = _router_setting(db_path, "router_user", default="root") or "root"
+        self.router_password = _router_setting(db_path, "router_password")
 
     def block_device(self, device_ip: str, mac_address: str | None = None) -> EnforcementResult:
         if self.router_type and self.router_url:
@@ -324,19 +376,22 @@ class RouterManager:
             conn.close()
 
     @staticmethod
-    def router_config_summary() -> dict:
-        router_type = os.environ.get("NETGUARD_ROUTER_TYPE", "").strip()
-        router_url = os.environ.get("NETGUARD_ROUTER_URL", "").strip()
+    def router_config_summary(db_path: str | None = None) -> dict:
+        router_type = _router_setting(db_path, "router_type")
+        router_url = _router_setting(db_path, "router_url")
+        router_user = _router_setting(db_path, "router_user", default="root") or "root"
+        router_password = _router_setting(db_path, "router_password")
+        router_token = _router_setting(db_path, "router_token")
+        env_overrides = _router_env_overrides(db_path)
+
         return {
             "router_type": router_type or None,
             "router_url": router_url or None,
+            "router_user": router_user or None,
+            "router_password": "***" if router_password else None,
+            "router_token": "***" if router_token else None,
             "configured": bool(router_type and router_url),
             "supported_types": ["openwrt", "linksys", "velop", "custom"],
-            "env_keys": [
-                "NETGUARD_ROUTER_TYPE",
-                "NETGUARD_ROUTER_URL",
-                "NETGUARD_ROUTER_USER",
-                "NETGUARD_ROUTER_PASSWORD",
-                "NETGUARD_ROUTER_TOKEN",
-            ],
+            "env_overrides": env_overrides,
+            "env_keys": list(_ROUTER_ENV_KEYS.values()),
         }

@@ -82,6 +82,50 @@ class PolicyToggle(BaseModel):
     enabled: bool
 
 
+class RouterConfigUpdate(BaseModel):
+    router_type: str | None = None
+    router_url: str | None = None
+    router_user: str | None = None
+    router_password: str | None = None
+    router_token: str | None = None
+
+
+def _save_router_config(body: RouterConfigUpdate) -> list[str]:
+    enforcement_dir = os.path.join(_features_daemon, "enforcement")
+    if enforcement_dir not in sys.path:
+        sys.path.insert(0, enforcement_dir)
+    from router_manager import ROUTER_CONFIG_KEYS
+
+    conn = _conn()
+    updated: list[str] = []
+    mapping = body.model_dump(exclude_none=True)
+
+    for key in ROUTER_CONFIG_KEYS:
+        if key not in mapping:
+            continue
+        value = str(mapping[key]).strip()
+        if key == "router_type":
+            value = value.lower()
+        if key in ("router_password", "router_token") and value == "***":
+            continue
+        if not value:
+            conn.execute("DELETE FROM notification_config WHERE key = ?", (key,))
+            updated.append(key)
+            continue
+        conn.execute(
+            """
+            INSERT INTO notification_config (key, value) VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """,
+            (key, value),
+        )
+        updated.append(key)
+
+    conn.commit()
+    conn.close()
+    return updated
+
+
 @router.put("/alerts/{alert_id}/acknowledge", dependencies=[Depends(_optional_api_key)])
 def acknowledge_alert(alert_id: int) -> dict:
     conn = _conn()
@@ -529,7 +573,72 @@ def router_settings() -> dict:
         sys.path.insert(0, enforcement_dir)
     from router_manager import RouterManager
 
-    return RouterManager.router_config_summary()
+    return RouterManager.router_config_summary(_DB_PATH)
+
+
+@router.put("/settings/router", dependencies=[Depends(_optional_api_key)])
+def update_router_settings(body: RouterConfigUpdate) -> dict:
+    updated = _save_router_config(body)
+    enforcement_dir = os.path.join(_features_daemon, "enforcement")
+    if enforcement_dir not in sys.path:
+        sys.path.insert(0, enforcement_dir)
+    from router_manager import RouterManager
+
+    summary = RouterManager.router_config_summary(_DB_PATH)
+    return {
+        "success": True,
+        "updated_keys": updated,
+        **summary,
+    }
+
+
+@router.post("/settings/restart-api", dependencies=[Depends(_optional_api_key)])
+def restart_api_service() -> dict:
+    import subprocess
+
+    if sys.platform == "win32":
+        return {
+            "success": False,
+            "message": (
+                "On Windows, restart NetGuard-API from Task Scheduler "
+                "or reboot the PC."
+            ),
+        }
+
+    restart_script = "/opt/netguard/scripts/restart-api.sh"
+    if os.path.isfile(restart_script):
+        command = ["sudo", "-n", restart_script]
+    else:
+        command = ["sudo", "-n", "/bin/systemctl", "restart", "netguard-api.service"]
+
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Could not restart API: {exc}",
+        ) from exc
+
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                detail
+                or "API restart failed. Re-run Pi install to configure passwordless sudo."
+            ),
+        )
+
+    return {
+        "success": True,
+        "message": "API restart initiated. The dashboard will reconnect shortly.",
+    }
 
 
 @router.post("/notifications/test", dependencies=[Depends(_optional_api_key)])

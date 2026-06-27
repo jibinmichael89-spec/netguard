@@ -273,9 +273,21 @@ export interface PoliciesResponse {
 export interface RouterSettingsResponse {
   router_type: string | null;
   router_url: string | null;
+  router_user: string | null;
+  router_password: string | null;
+  router_token: string | null;
   configured: boolean;
   supported_types: string[];
+  env_overrides: string[];
   env_keys: string[];
+}
+
+export interface RouterConfigUpdate {
+  router_type?: string;
+  router_url?: string;
+  router_user?: string;
+  router_password?: string;
+  router_token?: string;
 }
 
 export interface MspSite {

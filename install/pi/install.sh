@@ -244,6 +244,23 @@ configure_firewall() {
     fi
 }
 
+configure_api_restart() {
+    local restart_script="$INSTALL_DIR/scripts/restart-api.sh"
+    if [[ ! -f "$restart_script" ]]; then
+        warn "Missing $restart_script — Settings API restart button will not work"
+        return
+    fi
+    log "Configuring passwordless API restart for dashboard Settings ..."
+    chmod 755 "$restart_script"
+    chown root:root "$restart_script"
+    local sudoers_file="/etc/sudoers.d/netguard-api-restart"
+    printf '%s\n' "netguard ALL=(root) NOPASSWD: $restart_script" > "$sudoers_file"
+    chmod 440 "$sudoers_file"
+    if ! visudo -cf "$sudoers_file" >/dev/null 2>&1; then
+        warn "sudoers validation failed for $sudoers_file"
+    fi
+}
+
 enable_services() {
     log "Enabling NetGuard services (start on boot) ..."
     systemctl enable netguard.target
@@ -359,6 +376,7 @@ main() {
     migrate_existing_database
     install_systemd_units
     configure_firewall
+    configure_api_restart
     enable_services
     verify_installation || true
     print_summary
