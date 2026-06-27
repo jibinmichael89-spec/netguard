@@ -28,7 +28,8 @@ const OVERALL_META: Record<
   },
   degraded: {
     label: "Partially active",
-    detail: "Some core services look delayed. Check scanner processes if this persists.",
+    detail:
+      "Some core services are stopped or unavailable. Check systemd or scanner processes.",
     className: "text-ng-warning border-ng-warning/30 bg-ng-warning/10",
     icon: Shield,
   },
@@ -49,6 +50,16 @@ const DETECTOR_STATUS_META: Record<
     dotClass: "bg-ng-safe",
     textClass: "text-ng-safe",
   },
+  idle: {
+    label: "Running — no events",
+    dotClass: "bg-ng-safe",
+    textClass: "text-ng-safe",
+  },
+  stopped: {
+    label: "Service stopped",
+    dotClass: "bg-ng-alert",
+    textClass: "text-ng-alert",
+  },
   stale: {
     label: "Delayed",
     dotClass: "bg-ng-warning",
@@ -65,6 +76,21 @@ const DETECTOR_STATUS_META: Record<
     textClass: "text-gray-400",
   },
 };
+
+function detectorActivityLine(detector: MonitoringDetector): string {
+  if (detector.status === "stopped") {
+    return "Start the service to resume monitoring";
+  }
+  if (detector.status === "idle") {
+    return detector.last_activity
+      ? `Running — last event ${formatRelativeTime(detector.last_activity)}`
+      : "Running — no events recorded yet";
+  }
+  if (detector.last_activity) {
+    return `Last activity ${formatRelativeTime(detector.last_activity)}`;
+  }
+  return "No activity recorded yet";
+}
 
 export default function MonitoringStatusPanel({
   status,
@@ -157,9 +183,7 @@ export default function MonitoringStatusPanel({
                     </span>
                   </div>
                   <p className="mt-0.5 text-xs text-gray-500">
-                    {detector.last_activity
-                      ? `Last activity ${formatRelativeTime(detector.last_activity)}`
-                      : "No activity recorded yet"}
+                    {detectorActivityLine(detector)}
                   </p>
                 </div>
               </div>

@@ -248,6 +248,12 @@ enable_services() {
     log "Enabling NetGuard services (start on boot) ..."
     systemctl enable netguard.target
     systemctl enable netguard-network-blocker.service || true
+    for unit in netguard-api.service netguard-arp-scanner.service \
+        netguard-risk-scorer.service netguard-dns-monitor.service \
+        netguard-arp-spoof.service netguard-rogue-dhcp.service \
+        netguard-inbound-detector.service netguard-policy-engine.service; do
+        systemctl enable "$unit" 2>/dev/null || true
+    done
 
     log "Starting NetGuard services ..."
     systemctl restart netguard-arp-scanner.service

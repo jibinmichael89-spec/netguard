@@ -133,7 +133,13 @@ export interface SecurityAlertsResponse {
   alerts: SecurityAlert[];
 }
 
-export type DetectorStatus = "active" | "stale" | "inactive" | "standby";
+export type DetectorStatus =
+  | "active"
+  | "idle"
+  | "stopped"
+  | "stale"
+  | "inactive"
+  | "standby";
 
 export type MonitoringOverallStatus = "watching" | "degraded" | "offline";
 
@@ -143,6 +149,7 @@ export interface MonitoringDetector {
   description: string;
   optional: boolean;
   status: DetectorStatus;
+  service_running: boolean | null;
   last_activity: string | null;
   age_seconds: number | null;
 }
