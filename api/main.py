@@ -82,6 +82,74 @@ NVD_REFERENCE_CACHE_PATH = os.path.join(
 
 _RISK_RULES: dict = {}
 
+
+def _ensure_stdio_for_frozen() -> None:
+    """Give uvicorn writable streams when running as a windowless Windows exe."""
+    if not getattr(sys, "frozen", False):
+        return
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+
+    if sys.platform == "win32":
+        log_root = os.path.join(os.environ.get("ProgramData", ""), "NetGuard", "logs")
+    else:
+        log_root = "/var/log/netguard"
+
+    os.makedirs(log_root, exist_ok=True)
+
+    if sys.stdout is None:
+        sys.stdout = open(
+            os.path.join(log_root, "NetGuard-API.log"),
+            "a",
+            encoding="utf-8",
+            buffering=1,
+        )
+    if sys.stderr is None:
+        sys.stderr = open(
+            os.path.join(log_root, "NetGuard-API.err.log"),
+            "a",
+            encoding="utf-8",
+            buffering=1,
+        )
+
+
+_FROZEN_UVICORN_LOG_CONFIG = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "default": {
+            "()": "uvicorn.logging.DefaultFormatter",
+            "fmt": "%(levelprefix)s %(message)s",
+            "use_colors": False,
+        },
+        "access": {
+            "()": "uvicorn.logging.AccessFormatter",
+            "fmt": '%(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s',
+            "use_colors": False,
+        },
+    },
+    "handlers": {
+        "default": {
+            "formatter": "default",
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stderr",
+        },
+        "access": {
+            "formatter": "access",
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stdout",
+        },
+    },
+    "loggers": {
+        "uvicorn": {"handlers": ["default"], "level": "INFO", "propagate": False},
+        "uvicorn.error": {"level": "INFO"},
+        "uvicorn.access": {"handlers": ["access"], "level": "INFO", "propagate": False},
+    },
+}
+
+
+_ensure_stdio_for_frozen()
+
 # ---------------------------------------------------------------------------
 # FastAPI application
 # ---------------------------------------------------------------------------
@@ -1611,6 +1679,11 @@ if __name__ == "__main__":
         print("")
         if dashboard_path is None:
             print("ERROR: Dashboard UI was not bundled into this executable.")
-        uvicorn.run(app, host="0.0.0.0", port=8000)
+        uvicorn.run(
+            app,
+            host="0.0.0.0",
+            port=8000,
+            log_config=_FROZEN_UVICORN_LOG_CONFIG,
+        )
     else:
         uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
