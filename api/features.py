@@ -75,6 +75,11 @@ class NotificationConfigUpdate(BaseModel):
     smtp_password: str | None = None
     smtp_from: str | None = None
     alert_email_to: str | None = None
+    weekly_report_enabled: str | None = None
+
+
+class PolicyToggle(BaseModel):
+    enabled: bool
 
 
 @router.put("/alerts/{alert_id}/acknowledge", dependencies=[Depends(_optional_api_key)])
@@ -461,6 +466,134 @@ def enforce_block(device_ip: str) -> dict:
         "method": result.method,
         "detail": result.detail,
     }
+
+
+@router.post("/enforcement/unblock/{device_ip}", dependencies=[Depends(_optional_api_key)])
+def enforce_unblock(device_ip: str) -> dict:
+    conn = _conn()
+    row = conn.execute(
+        "SELECT mac_address FROM devices WHERE ip_address = ?",
+        (device_ip,),
+    ).fetchone()
+    if row is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Device not found")
+    conn.execute(
+        "UPDATE devices SET is_blocked = 0 WHERE ip_address = ?",
+        (device_ip,),
+    )
+    conn.commit()
+    conn.close()
+
+    enforcement_dir = os.path.join(_features_daemon, "enforcement")
+    if enforcement_dir not in sys.path:
+        sys.path.insert(0, enforcement_dir)
+    from router_manager import RouterManager
+
+    result = RouterManager(_DB_PATH).unblock_device(device_ip, row[0])
+    return {
+        "success": result.success,
+        "method": result.method,
+        "detail": result.detail,
+    }
+
+
+@router.post("/enforcement/pause/{device_ip}", dependencies=[Depends(_optional_api_key)])
+def enforce_pause(device_ip: str, minutes: int = 60) -> dict:
+    conn = _conn()
+    row = conn.execute(
+        "SELECT mac_address FROM devices WHERE ip_address = ?",
+        (device_ip,),
+    ).fetchone()
+    conn.close()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    enforcement_dir = os.path.join(_features_daemon, "enforcement")
+    if enforcement_dir not in sys.path:
+        sys.path.insert(0, enforcement_dir)
+    from router_manager import RouterManager
+
+    result = RouterManager(_DB_PATH).pause_device(device_ip, row[0], minutes=minutes)
+    return {
+        "success": result.success,
+        "method": result.method,
+        "detail": result.detail,
+    }
+
+
+@router.get("/settings/router")
+def router_settings() -> dict:
+    enforcement_dir = os.path.join(_features_daemon, "enforcement")
+    if enforcement_dir not in sys.path:
+        sys.path.insert(0, enforcement_dir)
+    from router_manager import RouterManager
+
+    return RouterManager.router_config_summary()
+
+
+@router.post("/notifications/test", dependencies=[Depends(_optional_api_key)])
+def test_notifications() -> dict:
+    notify_dir = os.path.join(_features_daemon, "notifications")
+    if notify_dir not in sys.path:
+        sys.path.insert(0, notify_dir)
+    from notifier import notify_alert
+
+    notify_alert(
+        "Info",
+        "test",
+        "127.0.0.1",
+        "NetGuard test notification — your settings are working.",
+        _DB_PATH,
+    )
+    return {"success": True, "message": "Test notification sent (if configured)"}
+
+
+@router.get("/policies")
+def list_policies() -> dict:
+    policies_path = os.path.join(_features_daemon, "data", "policies.json")
+    if not os.path.isfile(policies_path):
+        return {"count": 0, "policies": []}
+    with open(policies_path, encoding="utf-8") as handle:
+        data = json.load(handle)
+    policies = data.get("policies", [])
+    conn = _conn()
+    for policy in policies:
+        key = f"policy_enabled_{policy['id']}"
+        row = conn.execute(
+            "SELECT value FROM notification_config WHERE key = ?",
+            (key,),
+        ).fetchone()
+        if row is not None:
+            policy["enabled"] = row[0] not in ("0", "false", "False")
+    conn.close()
+    return {"count": len(policies), "policies": policies}
+
+
+@router.put("/policies/{policy_id}", dependencies=[Depends(_optional_api_key)])
+def update_policy(policy_id: str, body: PolicyToggle) -> dict:
+    conn = _conn()
+    conn.execute(
+        """
+        INSERT INTO notification_config (key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        """,
+        (f"policy_enabled_{policy_id}", "1" if body.enabled else "0"),
+    )
+    conn.commit()
+    conn.close()
+    return {"success": True, "policy_id": policy_id, "enabled": body.enabled}
+
+
+@router.post("/reports/weekly/send", dependencies=[Depends(_optional_api_key)])
+def send_weekly_report_endpoint() -> dict:
+    reports_dir = os.path.join(_features_daemon, "reports")
+    if reports_dir not in sys.path:
+        sys.path.insert(0, reports_dir)
+    from weekly_report import send_weekly_report
+
+    sent = send_weekly_report(_DB_PATH)
+    return {"success": sent, "message": "Weekly report emailed" if sent else "SMTP not configured"}
 
 
 def filter_visible_alerts(alerts: list[dict]) -> list[dict]:

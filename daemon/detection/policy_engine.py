@@ -21,12 +21,26 @@ def _configure_daemon_path() -> None:
         sys.path.insert(0, daemon_str)
 
 
-def _load_policies() -> list[dict]:
+def _load_policies(db_path: str | None = None) -> list[dict]:
     if not POLICIES_PATH.exists():
         return []
     with open(POLICIES_PATH, encoding="utf-8") as handle:
         data = json.load(handle)
-    return [policy for policy in data.get("policies", []) if policy.get("enabled", True)]
+    policies = list(data.get("policies", []))
+    if db_path:
+        conn = sqlite3.connect(db_path)
+        try:
+            for policy in policies:
+                key = f"policy_enabled_{policy['id']}"
+                row = conn.execute(
+                    "SELECT value FROM notification_config WHERE key = ?",
+                    (key,),
+                ).fetchone()
+                if row is not None:
+                    policy["enabled"] = row[0] not in ("0", "false", "False")
+        finally:
+            conn.close()
+    return [policy for policy in policies if policy.get("enabled", True)]
 
 
 def _violation_exists(
@@ -85,7 +99,7 @@ def _insert_violation(
 
 def evaluate_policies(db_path: str) -> int:
     """Run all enabled policies. Returns number of new violations."""
-    policies = {policy["id"]: policy for policy in _load_policies()}
+    policies = {policy["id"]: policy for policy in _load_policies(db_path)}
     if not policies:
         return 0
 

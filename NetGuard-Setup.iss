@@ -32,6 +32,12 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "{#BuildDir}\NetGuard-API.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\arp-scanner.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\arp-spoof-detector.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#BuildDir}\risk-scorer.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#BuildDir}\dns-monitor.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#BuildDir}\rogue-dhcp-detector.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#BuildDir}\inbound-connection-detector.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#BuildDir}\policy-engine.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#BuildDir}\threat-intel.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "dist\{#LauncherScript}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "dist\START-ARP-Scanner.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "dist\START-ARP-Spoof-Detector.bat"; DestDir: "{app}"; Flags: ignoreversion

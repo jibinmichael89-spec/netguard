@@ -67,6 +67,36 @@ def send_email(subject: str, body: str, db_path: str | None = None) -> bool:
     return True
 
 
+def send_html_email(
+    subject: str,
+    html_body: str,
+    text_body: str,
+    db_path: str | None = None,
+) -> bool:
+    host = _config_value(db_path, "smtp_host")
+    port = int(_config_value(db_path, "smtp_port") or "587")
+    user = _config_value(db_path, "smtp_user")
+    password = _config_value(db_path, "smtp_password")
+    sender = _config_value(db_path, "smtp_from") or user
+    recipient = _config_value(db_path, "alert_email_to")
+    if not host or not recipient:
+        return False
+
+    msg = EmailMessage()
+    msg["Subject"] = subject[:200]
+    msg["From"] = sender or "netguard@localhost"
+    msg["To"] = recipient
+    msg.set_content(text_body)
+    msg.add_alternative(html_body, subtype="html")
+
+    with smtplib.SMTP(host, port, timeout=20) as smtp:
+        if user and password:
+            smtp.starttls()
+            smtp.login(user, password)
+        smtp.send_message(msg)
+    return True
+
+
 def notify_alert(
     severity: str,
     alert_type: str,

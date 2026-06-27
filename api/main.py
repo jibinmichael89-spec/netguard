@@ -68,6 +68,7 @@ if _api_module_dir not in sys.path:
     sys.path.insert(0, _api_module_dir)
 
 import features as feature_routes
+import msp as msp_routes
 
 DB_PATH = resolve_db_path(PROJECT_ROOT if not getattr(sys, "frozen", False) else None)
 PORT_INSTRUCTIONS_PATH = os.path.join(
@@ -121,7 +122,9 @@ def _startup() -> None:
     """Load risk rules and register feature routes."""
     _preload_risk_rules()
     feature_routes.configure(DB_PATH, get_db_connection)
+    msp_routes.configure(DB_PATH, get_db_connection)
     app.include_router(feature_routes.router)
+    app.include_router(msp_routes.router)
 
 
 def get_risk_rules() -> dict:

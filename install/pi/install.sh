@@ -161,9 +161,18 @@ NETGUARD_REQUIRE_DEVICE_APPROVAL=1
 # NETGUARD_ALERT_EMAIL_TO=
 # Optional API key for write endpoints
 # NETGUARD_API_KEY=
-# MSP collector (future)
-# NETGUARD_MSP_COLLECTOR_URL=
+# Router enforcement (openwrt | linksys | velop | custom)
+# NETGUARD_ROUTER_TYPE=openwrt
+# NETGUARD_ROUTER_URL=http://192.168.1.1
+# NETGUARD_ROUTER_USER=root
+# NETGUARD_ROUTER_PASSWORD=
+# NETGUARD_ROUTER_TOKEN=
+# MSP collector (central server URL + site token)
+# NETGUARD_MSP_COLLECTOR_URL=https://msp.example.com
 # NETGUARD_SITE_TOKEN=
+# NETGUARD_SITE_ID=default
+# MSP admin key for POST /msp/sites/register
+# NETGUARD_MSP_ADMIN_KEY=
 EOF
     chmod 644 "$ENV_FILE"
 }
@@ -204,6 +213,8 @@ install_systemd_units() {
         netguard-arp-spoof.service netguard-rogue-dhcp.service \
         netguard-inbound-detector.service netguard-policy-engine.service \
         netguard-threat-intel.service netguard-threat-intel.timer \
+        netguard-weekly-report.service netguard-weekly-report.timer \
+        netguard-msp-agent.service netguard-msp-agent.timer \
         netguard-network-blocker.service; do
         install -m 644 "$systemd_dir/$unit" "/etc/systemd/system/$unit"
     done
@@ -231,6 +242,8 @@ enable_services() {
     systemctl restart netguard-inbound-detector.service
     systemctl restart netguard-policy-engine.service
     systemctl enable --now netguard-threat-intel.timer 2>/dev/null || true
+    systemctl enable --now netguard-weekly-report.timer 2>/dev/null || true
+    systemctl enable --now netguard-msp-agent.timer 2>/dev/null || true
     systemctl restart netguard-api.service
     systemctl restart netguard.target
 

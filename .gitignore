@@ -9,3 +9,4 @@ venv/
 .vscode/
 Thumbs.db
 vault_request.json
+build/installer/NetGuard-Setup.exe

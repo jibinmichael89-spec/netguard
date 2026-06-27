@@ -4,16 +4,28 @@ cd /d "%~dp0"
 
 set "DASHBOARD_URL=http://127.0.0.1:8000"
 
-rem Start background scanner if not already running (devices, ports, DNS).
-tasklist /FI "IMAGENAME eq arp-scanner.exe" 2>nul | find /I "arp-scanner.exe" >nul
-if errorlevel 1 (
-    start "NetGuard Scanner" /MIN "%~dp0arp-scanner.exe"
+rem Start v1.2 background daemons if not already running.
+for %%E in (
+    arp-scanner.exe
+    arp-spoof-detector.exe
+    risk-scorer.exe
+    dns-monitor.exe
+    rogue-dhcp-detector.exe
+    inbound-connection-detector.exe
+    policy-engine.exe
+) do (
+    tasklist /FI "IMAGENAME eq %%E" 2>nul | find /I "%%E" >nul
+    if errorlevel 1 (
+        start "NetGuard %%E" /MIN "%~dp0%%E"
+    )
 )
 
-rem Start ARP spoof detector if not already running.
-tasklist /FI "IMAGENAME eq arp-spoof-detector.exe" 2>nul | find /I "arp-spoof-detector.exe" >nul
-if errorlevel 1 (
-    start "NetGuard ARP Spoof Guard" /MIN "%~dp0arp-spoof-detector.exe"
+rem Run threat intel update once if executable present (non-blocking).
+if exist "%~dp0threat-intel.exe" (
+    tasklist /FI "IMAGENAME eq threat-intel.exe" 2>nul | find /I "threat-intel.exe" >nul
+    if errorlevel 1 (
+        start "NetGuard Threat Intel" /MIN "%~dp0threat-intel.exe"
+    )
 )
 
 rem If the API is already running, just open the dashboard.

@@ -18,9 +18,21 @@ New-Item -ItemType Directory -Force -Path $ExeDir | Out-Null
 
 Write-Host "[*] Building PyInstaller executables ..."
 Push-Location $Root
-python -m PyInstaller --noconfirm --distpath $ExeDir --workpath (Join-Path $Root "build\temp") api.spec
-python -m PyInstaller --noconfirm --distpath $ExeDir --workpath (Join-Path $Root "build\temp") arp_scanner.spec
-python -m PyInstaller --noconfirm --distpath $ExeDir --workpath (Join-Path $Root "build\temp") arp_spoof_detector.spec
+$Specs = @(
+    "api.spec",
+    "arp_scanner.spec",
+    "arp_spoof_detector.spec",
+    "risk_scorer.spec",
+    "dns_monitor.spec",
+    "rogue_dhcp_detector.spec",
+    "inbound_connection_detector.spec",
+    "policy_engine.spec",
+    "threat_intel.spec"
+)
+foreach ($Spec in $Specs) {
+    Write-Host "  -> $Spec"
+    python -m PyInstaller --noconfirm --distpath $ExeDir --workpath (Join-Path $Root "build\temp") $Spec
+}
 Pop-Location
 
 Write-Host "[*] Copying launcher scripts ..."

@@ -240,3 +240,48 @@ export interface VaultAddResponse {
   id: number;
   strength_score: number;
 }
+
+export interface NotificationConfigResponse {
+  config: Record<string, string>;
+}
+
+export interface ThreatIntelStatusResponse {
+  domain_count: number;
+  last_updated: string | null;
+}
+
+export interface PolicyDefinition {
+  id: string;
+  name: string;
+  severity: string;
+  description: string;
+  enabled?: boolean;
+}
+
+export interface PoliciesResponse {
+  count: number;
+  policies: PolicyDefinition[];
+}
+
+export interface RouterSettingsResponse {
+  router_type: string | null;
+  router_url: string | null;
+  configured: boolean;
+  supported_types: string[];
+  env_keys: string[];
+}
+
+export interface MspSite {
+  site_id: string;
+  site_name: string | null;
+  last_heartbeat: string | null;
+  online_devices: number | null;
+  alerts_24h: number | null;
+  agent_version: string | null;
+  status: string | null;
+}
+
+export interface MspSitesResponse {
+  count: number;
+  sites: MspSite[];
+}
