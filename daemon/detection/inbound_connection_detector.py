@@ -435,9 +435,16 @@ def main() -> None:
     require_root()
 
     if not os.path.exists(DB_PATH):
-        print(f"[!] Database not found: {DB_PATH}")
-        print("    Start the ARP scanner first.")
-        sys.exit(1)
+        for attempt in range(1, 31):
+            if os.path.exists(DB_PATH):
+                break
+            if attempt == 1:
+                print("[*] Waiting for ARP scanner to create the database ...")
+            time.sleep(1)
+        else:
+            print(f"[!] Database not found: {DB_PATH}")
+            print("    Start the ARP scanner first.")
+            sys.exit(1)
 
     init_database(DB_PATH)
 

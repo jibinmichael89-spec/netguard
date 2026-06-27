@@ -47,6 +47,21 @@ Run this first (Administrator PowerShell, repo root):
         Copy-Item $RestartApi (Join-Path $InstallDir "restart-api.ps1") -Force
     }
 
+    $EngineScript = Join-Path $RepoRoot "scripts\Start-NetGuard-Engine.ps1"
+    if (Test-Path $EngineScript) {
+        Copy-Item $EngineScript (Join-Path $InstallDir "Start-NetGuard-Engine.ps1") -Force
+    }
+
+    $ServiceHost = Join-Path $SourceDir "NetGuard-ServiceHost.bat"
+    if (Test-Path $ServiceHost) {
+        Copy-Item $ServiceHost (Join-Path $InstallDir "NetGuard-ServiceHost.bat") -Force
+    } else {
+        $ServiceHost = Join-Path $RepoRoot "dist\NetGuard-ServiceHost.bat"
+        if (Test-Path $ServiceHost) {
+            Copy-Item $ServiceHost (Join-Path $InstallDir "NetGuard-ServiceHost.bat") -Force
+        }
+    }
+
     $Register = Join-Path $InstallDir "Register-NetGuard-AutoStart.ps1"
     if (-not (Test-Path $Register)) {
         Copy-Item (Join-Path $RepoRoot "build\windows\Register-NetGuard-AutoStart.ps1") $Register -Force
