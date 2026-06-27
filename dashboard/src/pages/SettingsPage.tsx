@@ -46,6 +46,7 @@ export default function SettingsPage() {
   });
   const [saving, setSaving] = useState(false);
   const [restartingApi, setRestartingApi] = useState(false);
+  const [testingRouter, setTestingRouter] = useState(false);
   const [updatingIntel, setUpdatingIntel] = useState(false);
 
   const load = useCallback(async () => {
@@ -245,6 +246,32 @@ export default function SettingsPage() {
     } finally {
       setSaving(false);
       setRestartingApi(false);
+    }
+  };
+
+  const testRouterConnection = async () => {
+    setTestingRouter(true);
+    setError(undefined);
+    setMessage(undefined);
+    try {
+      await apiFetch<RouterSettingsResponse>("/settings/router", {
+        method: "PUT",
+        body: JSON.stringify(buildRouterPayload()),
+      });
+      const result = await apiFetch<{ success: boolean; detail: string }>(
+        "/settings/router/test",
+        { method: "POST" },
+      );
+      if (result.success) {
+        setMessage(`Router test OK: ${result.detail}`);
+      } else {
+        setError(`Router test failed: ${result.detail}`);
+      }
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Router test failed");
+    } finally {
+      setTestingRouter(false);
     }
   };
 
@@ -520,10 +547,19 @@ export default function SettingsPage() {
 
           <p className="text-xs text-gray-500">
             OpenWrt uses ubus login or token. Linksys/Velop uses JNAP with admin password.
-            Custom sends a JSON webhook on block/unblock.
+            BT/Virgin/Sky hubs usually do not support API block — Pi uses ARP network blocker instead.
           </p>
 
           <div className="flex flex-wrap gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => void testRouterConnection()}
+              disabled={testingRouter || saving || restartingApi}
+              className="flex items-center gap-2 rounded-lg border border-ng-border px-4 py-2 text-sm font-medium text-gray-300 hover:text-white disabled:opacity-50"
+            >
+              <Send className="h-4 w-4" />
+              Test router login
+            </button>
             <button
               type="button"
               onClick={() => void saveRouterSettings(false)}

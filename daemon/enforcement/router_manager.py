@@ -104,8 +104,9 @@ class RouterManager:
             method="visibility_only",
             success=False,
             detail=(
-                "Device marked blocked in NetGuard. Configure NETGUARD_ROUTER_TYPE=openwrt "
-                "or linksys with NETGUARD_ROUTER_URL, or use Pi DNS/network_blocker."
+                "Device marked blocked in NetGuard only. Router API failed or is not "
+                "supported on this hardware. On Pi, enable netguard-network-blocker "
+                "(ARP isolation): sudo systemctl enable --now netguard-network-blocker.service"
             ),
         )
 

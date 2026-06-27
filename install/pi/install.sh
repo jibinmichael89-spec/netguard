@@ -294,8 +294,13 @@ enable_services() {
     systemctl restart netguard-api.service
     systemctl restart netguard.target
 
-    # Optional — mesh networks may limit effectiveness
-    systemctl disable --now netguard-network-blocker.service 2>/dev/null || true
+    # Pi home: ARP network blocker enforces dashboard blocks on typical ISP routers.
+    if [[ "$NETGUARD_PROFILE" == "home" ]]; then
+        systemctl enable --now netguard-network-blocker.service 2>/dev/null || true
+        log "Network blocker enabled (ARP isolation for blocked devices)"
+    else
+        systemctl disable --now netguard-network-blocker.service 2>/dev/null || true
+    fi
 }
 
 verify_installation() {

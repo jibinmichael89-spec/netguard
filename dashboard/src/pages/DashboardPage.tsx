@@ -15,6 +15,11 @@ import type {
 } from "../types";
 import { DASHBOARD_REFRESH_MS, NEW_DEVICE_WINDOW_HOURS } from "../config";
 import { isRecentlyAdded } from "../utils/format";
+import {
+  enforceDeviceBlock,
+  enforceDeviceUnblock,
+  formatEnforcementMessage,
+} from "../utils/enforcement";
 import StatCard from "../components/StatCard";
 import DeviceTable from "../components/DeviceTable";
 import PendingApprovalsBanner from "../components/PendingApprovalsBanner";
@@ -140,13 +145,18 @@ export default function DashboardPage() {
     setActionError(null);
     setActionLoadingId(device.id);
     try {
+      const willBlock = (device.is_blocked ?? 0) !== 1;
       await apiFetch<DeviceBlockResponse>(
         `/devices/id/${device.id}/block`,
         {
           method: "PUT",
-          body: JSON.stringify({ is_blocked: (device.is_blocked ?? 0) !== 1 }),
+          body: JSON.stringify({ is_blocked: willBlock }),
         },
       );
+      const result = willBlock
+        ? await enforceDeviceBlock(device.ip_address)
+        : await enforceDeviceUnblock(device.ip_address);
+      setActionError(formatEnforcementMessage(result));
       await fetchData(false);
     } catch (error) {
       setActionError(
