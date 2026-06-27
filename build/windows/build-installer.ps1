@@ -27,7 +27,8 @@ $Specs = @(
     "rogue_dhcp_detector.spec",
     "inbound_connection_detector.spec",
     "policy_engine.spec",
-    "threat_intel.spec"
+    "threat_intel.spec",
+    "msp_agent.spec"
 )
 foreach ($Spec in $Specs) {
     Write-Host "  -> $Spec"
@@ -37,8 +38,12 @@ Pop-Location
 
 Write-Host "[*] Copying launcher scripts ..."
 Copy-Item (Join-Path $Root "dist\START-NetGuard.bat") $ExeDir -Force
+Copy-Item (Join-Path $Root "dist\NetGuard-ServiceHost.bat") $ExeDir -Force
 Copy-Item (Join-Path $Root "dist\START-ARP-Scanner.bat") $ExeDir -Force
 Copy-Item (Join-Path $Root "dist\START-ARP-Spoof-Detector.bat") $ExeDir -Force
+Copy-Item (Join-Path $Root "build\windows\Register-NetGuard-AutoStart.ps1") $ExeDir -Force
+Copy-Item (Join-Path $Root "build\windows\Unregister-NetGuard-AutoStart.ps1") $ExeDir -Force
+Copy-Item (Join-Path $Root "install\profiles\windows-home\netguard.env") $ExeDir -Force
 
 $Iscc = @(
     "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",

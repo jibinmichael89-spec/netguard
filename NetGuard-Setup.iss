@@ -3,6 +3,7 @@
 #define MyAppPublisher "NetGuard"
 #define MyAppExeName "NetGuard-API.exe"
 #define LauncherScript "START-NetGuard.bat"
+#define ServiceHostScript "NetGuard-ServiceHost.bat"
 #define BuildDir "build\exe"
 
 [Setup]
@@ -27,6 +28,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+Name: "autostart"; Description: "Start all NetGuard engines automatically at Windows boot"; GroupDescription: "Services:"; Flags: checkedonce
 
 [Files]
 Source: "{#BuildDir}\NetGuard-API.exe"; DestDir: "{app}"; Flags: ignoreversion
@@ -38,9 +40,16 @@ Source: "{#BuildDir}\rogue-dhcp-detector.exe"; DestDir: "{app}"; Flags: ignoreve
 Source: "{#BuildDir}\inbound-connection-detector.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\policy-engine.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\threat-intel.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#BuildDir}\msp-agent.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "dist\{#LauncherScript}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "dist\{#ServiceHostScript}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "dist\START-ARP-Scanner.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "dist\START-ARP-Spoof-Detector.bat"; DestDir: "{app}"; Flags: ignoreversion
+Source: "build\windows\Register-NetGuard-AutoStart.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "build\windows\Unregister-NetGuard-AutoStart.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "install\profiles\windows-home\netguard.env"; DestDir: "{app}"; Flags: ignoreversion
+Source: "install\profiles\windows-msp\netguard.env"; DestDir: "{app}"; DestName: "netguard-msp.env.example"; Flags: ignoreversion
+Source: "dist\README.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#LauncherScript}"; IconFilename: "{app}\{#MyAppExeName}"
@@ -58,10 +67,37 @@ Type: files; Name: "{app}\netguard.db"
 [Code]
 #include "NetGuard-UninstallCode.iss"
 
+procedure RegisterAutoStartTasks();
+var
+  ResultCode: Integer;
+begin
+  if not WizardIsTaskSelected('autostart') then
+    Exit;
+  Exec('powershell.exe',
+    '-NoProfile -ExecutionPolicy Bypass -File "' +
+    ExpandConstant('{app}\Register-NetGuard-AutoStart.ps1') +
+    '" -InstallDir "' + ExpandConstant('{app}') + '" -Profile home',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    RegisterAutoStartTasks();
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  ResultCode: Integer;
 begin
   if CurUninstallStep = usUninstall then
+  begin
     KillNetGuardProcesses;
+    Exec('powershell.exe',
+      '-NoProfile -ExecutionPolicy Bypass -File "' +
+      ExpandConstant('{app}\Unregister-NetGuard-AutoStart.ps1') + '"',
+      '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end;
   if CurUninstallStep = usPostUninstall then
     DeleteNetGuardUserData;
 end;

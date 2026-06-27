@@ -16,6 +16,7 @@ DATA_DIR="/var/lib/netguard"
 LOG_DIR="/var/log/netguard"
 ENV_FILE="/etc/netguard/netguard.env"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+NETGUARD_PROFILE="${NETGUARD_PROFILE:-home}"
 
 # Source tree: install/pi/install.sh -> repo root is ../..
 if [[ -f "$SCRIPT_DIR/../../api/main.py" ]]; then
@@ -145,7 +146,22 @@ setup_data_directories() {
 }
 
 install_env_file() {
-    log "Installing $ENV_FILE ..."
+    log "Installing $ENV_FILE (profile: $NETGUARD_PROFILE) ..."
+    mkdir -p /etc/netguard
+
+    if [[ -n "${NETGUARD_PROFILE_ENV:-}" && -f "$NETGUARD_PROFILE_ENV" ]]; then
+        cp "$NETGUARD_PROFILE_ENV" "$ENV_FILE"
+        chmod 644 "$ENV_FILE"
+        return
+    fi
+
+    local profile_template="$SOURCE_DIR/install/profiles/pi-${NETGUARD_PROFILE}/netguard.env"
+    if [[ -f "$profile_template" ]]; then
+        cp "$profile_template" "$ENV_FILE"
+        chmod 644 "$ENV_FILE"
+        return
+    fi
+
     cat >"$ENV_FILE" <<EOF
 # NetGuard environment — managed by install.sh
 NETGUARD_DB_PATH=$DATA_DIR/netguard.db
@@ -243,7 +259,15 @@ enable_services() {
     systemctl restart netguard-policy-engine.service
     systemctl enable --now netguard-threat-intel.timer 2>/dev/null || true
     systemctl enable --now netguard-weekly-report.timer 2>/dev/null || true
-    systemctl enable --now netguard-msp-agent.timer 2>/dev/null || true
+
+    if [[ "$NETGUARD_PROFILE" == "msp" ]]; then
+        systemctl enable --now netguard-msp-agent.timer 2>/dev/null || true
+        log "MSP heartbeat timer enabled (profile: msp)"
+    else
+        systemctl disable --now netguard-msp-agent.timer 2>/dev/null || true
+        systemctl disable --now netguard-msp-agent.service 2>/dev/null || true
+    fi
+
     systemctl restart netguard-api.service
     systemctl restart netguard.target
 
@@ -282,7 +306,7 @@ print_summary() {
     cat <<EOF
 
 ================================================================
- NetGuard installation complete
+ NetGuard installation complete (profile: $NETGUARD_PROFILE)
 ================================================================
  Install dir:  $INSTALL_DIR
  Database:     $DATA_DIR/netguard.db
@@ -315,7 +339,7 @@ EOF
 
 main() {
     require_root
-    log "NetGuard Pi installer"
+    log "NetGuard Pi installer (profile: $NETGUARD_PROFILE)"
     log "Source:  $SOURCE_DIR"
     log "Target:  $INSTALL_DIR"
 

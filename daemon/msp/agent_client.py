@@ -15,10 +15,14 @@ import urllib.request
 from datetime import datetime, timezone
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-DAEMON_DIR = os.path.join(PROJECT_ROOT, "daemon")
 
-if DAEMON_DIR not in sys.path:
-    sys.path.insert(0, DAEMON_DIR)
+if getattr(sys, "frozen", False):
+    _daemon_dir = os.path.join(sys._MEIPASS, "daemon")
+else:
+    _daemon_dir = os.path.join(PROJECT_ROOT, "daemon")
+
+if os.path.isdir(_daemon_dir) and _daemon_dir not in sys.path:
+    sys.path.insert(0, _daemon_dir)
 
 from db_path import resolve_db_path
 

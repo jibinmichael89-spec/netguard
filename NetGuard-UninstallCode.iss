@@ -22,6 +22,20 @@ begin
     ewWaitUntilTerminated, ResultCode);
   Exec('taskkill.exe', '/F /IM threat-intel.exe', '', SW_HIDE,
     ewWaitUntilTerminated, ResultCode);
+  Exec('taskkill.exe', '/F /IM msp-agent.exe', '', SW_HIDE,
+    ewWaitUntilTerminated, ResultCode);
+end;
+
+procedure RemoveNetGuardScheduledTasks;
+var
+  ResultCode: Integer;
+begin
+  Exec('schtasks.exe', '/Delete /TN "NetGuard Services" /F', '', SW_HIDE,
+    ewWaitUntilTerminated, ResultCode);
+  Exec('schtasks.exe', '/Delete /TN "NetGuard Threat Intel" /F', '', SW_HIDE,
+    ewWaitUntilTerminated, ResultCode);
+  Exec('schtasks.exe', '/Delete /TN "NetGuard MSP Heartbeat" /F', '', SW_HIDE,
+    ewWaitUntilTerminated, ResultCode);
 end;
 
 function RunRegisteredUninstaller: Boolean;
