@@ -12,6 +12,11 @@ import type {
 } from "../types";
 import { PORT_FETCH_TIMEOUT_MS } from "../config";
 import { formatTimestamp } from "../utils/format";
+import {
+  enforceDeviceBlock,
+  enforceDeviceUnblock,
+  formatEnforcementMessage,
+} from "../utils/enforcement";
 import { useSystemDetection, instructionPlatform } from "../hooks/useSystemDetection";
 import StatusBadge from "../components/StatusBadge";
 import ConfirmModal from "../components/ConfirmModal";
@@ -44,6 +49,7 @@ export default function DeviceDetailPage() {
   const [blockModalOpen, setBlockModalOpen] = useState(false);
   const [riskModalOpen, setRiskModalOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [instructionsPort, setInstructionsPort] = useState<number | null>(null);
 
   const fetchDevice = useCallback(async () => {
@@ -101,21 +107,27 @@ export default function DeviceDetailPage() {
   const handleBlockConfirm = async () => {
     if (!device) return;
     setActionLoading(true);
+    setActionMessage(null);
     try {
+      const willBlock = (device.is_blocked ?? 0) !== 1;
       await apiFetch<DeviceBlockResponse>(
         `/devices/id/${device.id}/block`,
         {
           method: "PUT",
-          body: JSON.stringify({ is_blocked: (device.is_blocked ?? 0) !== 1 }),
+          body: JSON.stringify({ is_blocked: willBlock }),
         },
       );
-      if ((device.is_blocked ?? 0) !== 1) {
-        await apiFetch(`/enforcement/block/${encodeURIComponent(device.ip_address)}`, {
-          method: "POST",
-        });
+      if (willBlock) {
+        const result = await enforceDeviceBlock(device.ip_address);
+        setActionMessage(formatEnforcementMessage(result));
+      } else {
+        const result = await enforceDeviceUnblock(device.ip_address);
+        setActionMessage(formatEnforcementMessage(result));
       }
       setBlockModalOpen(false);
       await fetchDevice();
+    } catch (err) {
+      setActionMessage(err instanceof Error ? err.message : "Block action failed");
     } finally {
       setActionLoading(false);
     }
@@ -179,6 +191,18 @@ export default function DeviceDetailPage() {
         <ArrowLeft className="h-4 w-4" />
         Back to Dashboard
       </Link>
+
+      {actionMessage && (
+        <div
+          className={`rounded-lg border px-4 py-3 text-sm ${
+            actionMessage.includes("failed") || actionMessage.includes("only")
+              ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
+              : "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+          }`}
+        >
+          {actionMessage}
+        </div>
+      )}
 
       <div
         className={`rounded-xl border bg-ng-card p-6 ${

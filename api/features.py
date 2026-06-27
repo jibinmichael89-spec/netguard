@@ -6,6 +6,7 @@ import json
 import os
 import sqlite3
 import sys
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
@@ -579,7 +580,10 @@ def enforce_block(device_ip: str) -> dict:
         sys.path.insert(0, enforcement_dir)
     from router_manager import RouterManager
 
-    result = RouterManager(_DB_PATH).block_device(device_ip, row[0])
+    mgr = RouterManager(_DB_PATH)
+    result = mgr.block_device(device_ip, row[0])
+    if not result.success:
+        mgr._log_enforcement(device_ip, result)
     return {
         "success": result.success,
         "method": result.method,
@@ -665,6 +669,70 @@ def update_router_settings(body: RouterConfigUpdate) -> dict:
         "updated_keys": updated,
         **summary,
     }
+
+
+@router.post("/settings/router/test", dependencies=[Depends(_optional_api_key)])
+def test_router_connection() -> dict:
+    enforcement_dir = os.path.join(_features_daemon, "enforcement")
+    if enforcement_dir not in sys.path:
+        sys.path.insert(0, enforcement_dir)
+    from router_manager import RouterManager
+
+    mgr = RouterManager(_DB_PATH)
+    if not mgr.router_type or not mgr.router_url:
+        return {
+            "success": False,
+            "detail": "Set router type and URL first, then save.",
+        }
+
+    try:
+        if mgr.router_type == "openwrt":
+            from openwrt_client import OpenWrtClient
+
+            client = OpenWrtClient(mgr.router_url, mgr.router_user, mgr.router_password)
+            if mgr.router_token:
+                client.use_token(mgr.router_token)
+            else:
+                client.login()
+            return {
+                "success": True,
+                "detail": f"OpenWrt login OK at {mgr.router_url}",
+            }
+
+        if mgr.router_type in ("linksys", "velop"):
+            from linksys_client import LinksysClient
+
+            password = mgr.router_password or mgr.router_token
+            if not password:
+                return {
+                    "success": False,
+                    "detail": "Router password is required for Linksys JNAP login.",
+                }
+            client = LinksysClient(mgr.router_url, password, mgr.router_user)
+            client.login()
+            devices = client._jnap("http://linksys.com/jnap/devicelist/GetDevices", {})
+            count = len(devices.get("output", {}).get("devices", []))
+            return {
+                "success": True,
+                "detail": f"Linksys login OK — {count} device(s) visible on router.",
+            }
+
+        if mgr.router_type == "custom":
+            request = urllib.request.Request(mgr.router_url, method="GET")
+            if mgr.router_token:
+                request.add_header("Authorization", f"Bearer {mgr.router_token}")
+            with urllib.request.urlopen(request, timeout=10) as response:
+                return {
+                    "success": True,
+                    "detail": f"Webhook URL reachable (HTTP {response.status}).",
+                }
+
+        return {
+            "success": False,
+            "detail": f"Unsupported router type: {mgr.router_type}",
+        }
+    except Exception as exc:
+        return {"success": False, "detail": str(exc)}
 
 
 @router.post("/settings/restart-api", dependencies=[Depends(_optional_api_key)])
