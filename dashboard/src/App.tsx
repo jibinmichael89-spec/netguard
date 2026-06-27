@@ -5,6 +5,8 @@ import AlertsPage from "./pages/AlertsPage";
 import DnsPage from "./pages/DnsPage";
 import DeviceDetailPage from "./pages/DeviceDetailPage";
 import VaultPage from "./pages/VaultPage";
+import SettingsPage from "./pages/SettingsPage";
+import MspPage from "./pages/MspPage";
 
 export default function App() {
   return (
@@ -16,6 +18,8 @@ export default function App() {
           <Route path="/dns" element={<DnsPage />} />
           <Route path="/device/:ip" element={<DeviceDetailPage />} />
           <Route path="/vault" element={<VaultPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/msp" element={<MspPage />} />
         </Route>
       </Routes>
     </HashRouter>

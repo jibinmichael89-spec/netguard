@@ -1,0 +1,14 @@
+[Unit]
+Description=NetGuard weekly security email report
+After=network-online.target netguard-api.service
+
+[Service]
+Type=oneshot
+User=netguard
+WorkingDirectory=/opt/netguard
+Environment=PYTHONPATH=/opt/netguard/daemon
+EnvironmentFile=-/etc/netguard/netguard.env
+ExecStart=/opt/netguard/venv/bin/python daemon/reports/weekly_report.py
+
+[Install]
+WantedBy=multi-user.target

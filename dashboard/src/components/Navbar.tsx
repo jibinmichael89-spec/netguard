@@ -11,6 +11,8 @@ const NAV_LINKS = [
   { to: "/alerts", label: "Alerts" },
   { to: "/dns", label: "DNS" },
   { to: "/vault", label: "Vault" },
+  { to: "/settings", label: "Settings" },
+  { to: "/msp", label: "MSP" },
 ];
 
 export default function Navbar({ lastScanTime }: NavbarProps) {

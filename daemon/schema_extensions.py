@@ -147,6 +147,29 @@ def apply_schema_extensions(conn: sqlite3.Connection) -> None:
         """,
         (now,),
     )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS msp_site_tokens (
+            site_id    TEXT PRIMARY KEY,
+            site_name  TEXT NOT NULL,
+            token      TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS msp_site_status (
+            site_id         TEXT PRIMARY KEY,
+            site_name       TEXT,
+            last_heartbeat  TEXT,
+            online_devices  INTEGER DEFAULT 0,
+            alerts_24h      INTEGER DEFAULT 0,
+            agent_version   TEXT,
+            status          TEXT DEFAULT 'unknown'
+        )
+        """
+    )
     conn.commit()
 
 

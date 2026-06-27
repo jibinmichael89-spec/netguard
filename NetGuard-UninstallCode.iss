@@ -10,6 +10,18 @@ begin
     ewWaitUntilTerminated, ResultCode);
   Exec('taskkill.exe', '/F /IM arp-spoof-detector.exe', '', SW_HIDE,
     ewWaitUntilTerminated, ResultCode);
+  Exec('taskkill.exe', '/F /IM risk-scorer.exe', '', SW_HIDE,
+    ewWaitUntilTerminated, ResultCode);
+  Exec('taskkill.exe', '/F /IM dns-monitor.exe', '', SW_HIDE,
+    ewWaitUntilTerminated, ResultCode);
+  Exec('taskkill.exe', '/F /IM rogue-dhcp-detector.exe', '', SW_HIDE,
+    ewWaitUntilTerminated, ResultCode);
+  Exec('taskkill.exe', '/F /IM inbound-connection-detector.exe', '', SW_HIDE,
+    ewWaitUntilTerminated, ResultCode);
+  Exec('taskkill.exe', '/F /IM policy-engine.exe', '', SW_HIDE,
+    ewWaitUntilTerminated, ResultCode);
+  Exec('taskkill.exe', '/F /IM threat-intel.exe', '', SW_HIDE,
+    ewWaitUntilTerminated, ResultCode);
 end;
 
 function RunRegisteredUninstaller: Boolean;
