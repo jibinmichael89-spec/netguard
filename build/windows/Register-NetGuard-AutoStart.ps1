@@ -35,6 +35,14 @@ function Read-EnvValue([string]$Key) {
     return ""
 }
 
+$ServicesScript = Join-Path $InstallDir "Start-NetGuard-Services.ps1"
+if (-not (Test-Path $ServicesScript)) {
+    $ServicesScript = Join-Path $RepoRoot "scripts\Start-NetGuard-Services.ps1"
+    if (Test-Path $ServicesScript) {
+        Copy-Item $ServicesScript (Join-Path $InstallDir "Start-NetGuard-Services.ps1") -Force
+    }
+}
+
 $HostBat = Join-Path $InstallDir "NetGuard-ServiceHost.bat"
 if (-not (Test-Path $HostBat)) {
     throw "NetGuard-ServiceHost.bat not found in $InstallDir"

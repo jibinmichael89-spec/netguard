@@ -44,6 +44,7 @@ Copy-Item (Join-Path $Root "dist\START-ARP-Spoof-Detector.bat") $ExeDir -Force
 Copy-Item (Join-Path $Root "build\windows\Register-NetGuard-AutoStart.ps1") $ExeDir -Force
 Copy-Item (Join-Path $Root "build\windows\Unregister-NetGuard-AutoStart.ps1") $ExeDir -Force
 Copy-Item (Join-Path $Root "scripts\restart-api.ps1") $ExeDir -Force
+Copy-Item (Join-Path $Root "scripts\Start-NetGuard-Services.ps1") $ExeDir -Force
 Copy-Item (Join-Path $Root "scripts\Start-NetGuard-Engine.ps1") $ExeDir -Force
 Copy-Item (Join-Path $Root "install\profiles\windows-home\netguard.env") $ExeDir -Force
 

@@ -16,6 +16,43 @@ def ensure_db_directory(db_path: str) -> None:
         os.makedirs(directory, exist_ok=True)
 
 
+def load_netguard_env() -> None:
+    """Load NETGUARD_* variables from the platform install env file when unset."""
+    if os.environ.get("NETGUARD_DB_PATH"):
+        return
+
+    env_paths: list[str] = []
+    if sys.platform == "win32":
+        program_data = os.environ.get("ProgramData", r"C:\ProgramData")
+        env_paths.append(os.path.join(program_data, "NetGuard", "netguard.env"))
+        if getattr(sys, "frozen", False):
+            env_paths.append(
+                os.path.join(os.path.dirname(os.path.abspath(sys.executable)), "netguard.env")
+            )
+    else:
+        env_paths.append(
+            os.environ.get("NETGUARD_ENV_FILE", "/etc/netguard/netguard.env")
+        )
+
+    for path in env_paths:
+        if not path or not os.path.isfile(path):
+            continue
+        try:
+            with open(path, encoding="utf-8") as handle:
+                for line in handle:
+                    stripped = line.strip()
+                    if not stripped or stripped.startswith("#") or "=" not in stripped:
+                        continue
+                    key, _, value = stripped.partition("=")
+                    key = key.strip()
+                    value = value.strip()
+                    if key and key not in os.environ:
+                        os.environ[key] = value
+            return
+        except OSError:
+            continue
+
+
 def resolve_db_path(project_root: str | None = None) -> str:
     """
     Locate netguard.db.
@@ -23,6 +60,7 @@ def resolve_db_path(project_root: str | None = None) -> str:
     When installed under Program Files, defaults to a writable path in
     %LOCALAPPDATA%\\NetGuard\\ on Windows.
     """
+    load_netguard_env()
     env_path = os.environ.get("NETGUARD_DB_PATH", "").strip()
     if env_path:
         return env_path
