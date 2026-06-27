@@ -48,6 +48,7 @@ Source: "dist\START-ARP-Spoof-Detector.bat"; DestDir: "{app}"; Flags: ignorevers
 Source: "build\windows\Register-NetGuard-AutoStart.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "build\windows\Unregister-NetGuard-AutoStart.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "scripts\restart-api.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "scripts\Start-NetGuard-Engine.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "install\profiles\windows-home\netguard.env"; DestDir: "{app}"; Flags: ignoreversion
 Source: "install\profiles\windows-msp\netguard.env"; DestDir: "{app}"; DestName: "netguard-msp.env.example"; Flags: ignoreversion
 Source: "dist\README.txt"; DestDir: "{app}"; Flags: ignoreversion

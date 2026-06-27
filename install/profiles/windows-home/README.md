@@ -6,6 +6,7 @@ For one household PC running NetGuard locally. No MSP central reporting.
 
 - Windows 10/11 (64-bit)
 - [Npcap](https://npcap.com) installed
+- Npcap installed (required for DNS/DHCP/inbound packet capture)
 - Administrator rights for install
 
 ## Install
@@ -33,7 +34,8 @@ This installs to `C:\Program Files\NetGuard` by default.
 - Config: `%ProgramData%\NetGuard\netguard.env`
 - Device approval for new devices: **enabled**
 - MSP heartbeat: **disabled**
-- All v1.2 background services started at boot via scheduled task
+- All v1.2 background services started at boot via scheduled task (hidden, no console windows)
+- Engine logs: `%ProgramData%\NetGuard\logs\`
 - **Settings → Router** — configure router block/unblock in the dashboard
 - **Save & restart API** — applies router settings without manual restart
 
