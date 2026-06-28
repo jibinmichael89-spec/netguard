@@ -128,7 +128,14 @@ export default function AlertsPage() {
         </p>
       </div>
 
-      {monitoringStatus && <MonitoringStatusPanel status={monitoringStatus} />}
+      {monitoringStatus && (
+        <MonitoringStatusPanel
+          status={monitoringStatus}
+          onStatusRefresh={async () => {
+            await fetchAlerts(false);
+          }}
+        />
+      )}
 
       <div
         className="flex flex-wrap gap-2"

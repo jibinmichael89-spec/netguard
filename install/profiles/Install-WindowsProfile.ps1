@@ -47,6 +47,11 @@ Run this first (Administrator PowerShell, repo root):
         Copy-Item $RestartApi (Join-Path $InstallDir "restart-api.ps1") -Force
     }
 
+    $RestartDetector = Join-Path $RepoRoot "scripts\restart-detector.ps1"
+    if (Test-Path $RestartDetector) {
+        Copy-Item $RestartDetector (Join-Path $InstallDir "restart-detector.ps1") -Force
+    }
+
     $ServicesScript = Join-Path $RepoRoot "scripts\Start-NetGuard-Services.ps1"
     if (Test-Path $ServicesScript) {
         Copy-Item $ServicesScript (Join-Path $InstallDir "Start-NetGuard-Services.ps1") -Force

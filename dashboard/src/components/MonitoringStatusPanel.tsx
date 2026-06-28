@@ -1,10 +1,13 @@
+import { useState } from "react";
 import {
   Activity,
   Radar,
+  RefreshCw,
   Shield,
   ShieldCheck,
   ShieldOff,
 } from "lucide-react";
+import { apiFetch } from "../api";
 import type {
   MonitoringDetector,
   MonitoringOverallStatus,
@@ -14,6 +17,7 @@ import { formatRelativeTime, formatTimestamp } from "../utils/format";
 
 interface MonitoringStatusPanelProps {
   status: MonitoringStatusResponse;
+  onStatusRefresh?: () => Promise<void>;
 }
 
 const OVERALL_META: Record<
@@ -29,7 +33,7 @@ const OVERALL_META: Record<
   degraded: {
     label: "Partially active",
     detail:
-      "Some core services are stopped or unavailable. Check systemd or scanner processes.",
+      "Some core services are stopped or unavailable. Use Restart below or check systemd on the Pi.",
     className: "text-ng-warning border-ng-warning/30 bg-ng-warning/10",
     icon: Shield,
   },
@@ -94,9 +98,34 @@ function detectorActivityLine(detector: MonitoringDetector): string {
 
 export default function MonitoringStatusPanel({
   status,
+  onStatusRefresh,
 }: MonitoringStatusPanelProps) {
   const overall = OVERALL_META[status.overall_status];
   const OverallIcon = overall.icon;
+  const [restartingId, setRestartingId] = useState<string | null>(null);
+  const [restartError, setRestartError] = useState<string | undefined>();
+
+  const restartDetector = async (detector: MonitoringDetector) => {
+    setRestartingId(detector.id);
+    setRestartError(undefined);
+    try {
+      await apiFetch<{ message: string }>(
+        `/monitoring/restart/${detector.id}`,
+        { method: "POST" },
+        15000,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      if (onStatusRefresh) {
+        await onStatusRefresh();
+      }
+    } catch (err) {
+      setRestartError(
+        err instanceof Error ? err.message : "Could not restart service",
+      );
+    } finally {
+      setRestartingId(null);
+    }
+  };
 
   return (
     <section className="rounded-xl border border-ng-border bg-ng-card p-5 sm:p-6">
@@ -120,6 +149,12 @@ export default function MonitoringStatusPanel({
       </div>
 
       <p className="mt-3 text-sm text-gray-400">{overall.detail}</p>
+
+      {restartError && (
+        <p className="mt-3 rounded-lg border border-ng-alert/30 bg-ng-alert/10 px-3 py-2 text-sm text-ng-alert">
+          {restartError}
+        </p>
+      )}
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         <div className="rounded-lg border border-ng-border bg-ng-elevated px-4 py-3">
@@ -154,6 +189,7 @@ export default function MonitoringStatusPanel({
         <div className="space-y-2">
           {status.detectors.map((detector) => {
             const meta = DETECTOR_STATUS_META[detector.status];
+            const isRestarting = restartingId === detector.id;
             return (
               <div
                 key={detector.id}
@@ -172,7 +208,7 @@ export default function MonitoringStatusPanel({
                     {detector.description}
                   </p>
                 </div>
-                <div className="flex shrink-0 flex-col items-start sm:items-end">
+                <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
                   <div className="flex items-center gap-2">
                     <span
                       className={`h-2.5 w-2.5 rounded-full ${meta.dotClass}`}
@@ -182,9 +218,20 @@ export default function MonitoringStatusPanel({
                       {meta.label}
                     </span>
                   </div>
-                  <p className="mt-0.5 text-xs text-gray-500">
+                  <p className="text-xs text-gray-500">
                     {detectorActivityLine(detector)}
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => restartDetector(detector)}
+                    disabled={isRestarting || restartingId !== null}
+                    className="flex items-center gap-1.5 rounded-lg border border-ng-accent/40 bg-ng-accent/10 px-3 py-1.5 text-xs font-medium text-ng-accent hover:bg-ng-accent/20 disabled:opacity-50"
+                  >
+                    <RefreshCw
+                      className={`h-3.5 w-3.5 ${isRestarting ? "animate-spin" : ""}`}
+                    />
+                    {isRestarting ? "Restarting…" : "Restart service"}
+                  </button>
                 </div>
               </div>
             );
