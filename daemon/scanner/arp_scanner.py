@@ -12,6 +12,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 import requests
@@ -318,6 +319,16 @@ def lookup_hostname(ip_address: str) -> str | None:
 # ARP scanning
 # ---------------------------------------------------------------------------
 
+def _merge_discovered_devices(*device_lists: list[dict]) -> list[dict]:
+    """Combine discovery results, keyed by normalized MAC address."""
+    by_mac: dict[str, dict] = {}
+    for devices in device_lists:
+        for device in devices:
+            mac = _normalize_mac(device["mac_address"])
+            by_mac[mac] = {"ip_address": device["ip_address"], "mac_address": mac}
+    return list(by_mac.values())
+
+
 def arp_scan_scapy(subnet: str, timeout: int = 3) -> list[dict]:
     """Send ARP requests across the subnet using Scapy (requires Npcap on Windows)."""
     arp_request = ARP(pdst=subnet)
@@ -381,10 +392,20 @@ def _read_windows_arp_table(network: ipaddress.IPv4Network) -> list[dict]:
     return devices
 
 
+def _ping_host(ip: str) -> None:
+    subprocess.run(
+        ["ping", "-n", "1", "-w", "200", ip],
+        capture_output=True,
+        timeout=3,
+        check=False,
+    )
+
+
 def _windows_ping_sweep(local_ip: str) -> None:
-    """Ping common hosts to populate the ARP cache."""
+    """Ping the subnet in parallel to populate the Windows ARP cache."""
     octets = local_ip.split(".")
-    gateway = f"{octets[0]}.{octets[1]}.{octets[2]}.1"
+    prefix = f"{octets[0]}.{octets[1]}.{octets[2]}."
+    gateway = f"{prefix}1"
     for target in (gateway, local_ip):
         subprocess.run(
             ["ping", "-n", "1", "-w", "500", target],
@@ -392,44 +413,30 @@ def _windows_ping_sweep(local_ip: str) -> None:
             timeout=3,
             check=False,
         )
-    for last_octet in range(1, 255):
-        if last_octet == int(octets[3]):
-            continue
-        subprocess.run(
-            [
-                "ping",
-                "-n",
-                "1",
-                "-w",
-                "50",
-                f"{octets[0]}.{octets[1]}.{octets[2]}.{last_octet}",
-            ],
-            capture_output=True,
-            timeout=1,
-            check=False,
-        )
+
+    targets = [
+        f"{prefix}{last_octet}"
+        for last_octet in range(1, 255)
+        if f"{prefix}{last_octet}" != local_ip
+    ]
+    with ThreadPoolExecutor(max_workers=48) as executor:
+        for _ in executor.map(_ping_host, targets):
+            pass
 
 
 def arp_scan_windows(subnet: str) -> list[dict]:
     """
-    Discover devices using the Windows ARP table (and ping sweep if needed).
+    Discover devices using a subnet ping sweep plus the Windows ARP table.
 
-    Works without Npcap and does not require administrator privileges,
-    though running as admin can improve results.
+    The ARP cache alone often only contains the router and a few recent peers,
+    so we always ping the subnet first to discover phones, TVs, and other LAN devices.
     """
     network = ipaddress.IPv4Network(subnet, strict=False)
     print("[*] Using Windows ARP table discovery ...")
-
-    devices = _read_windows_arp_table(network)
-    if devices:
-        print(f"[*] Found {len(devices)} device(s) in ARP cache.")
-        return devices
-
-    print("[*] ARP cache empty, running quick ping sweep ...")
+    print("[*] Running parallel ping sweep to discover LAN devices ...")
     _windows_ping_sweep(_detect_local_ip())
     devices = _read_windows_arp_table(network)
-    if devices:
-        print(f"[*] Found {len(devices)} device(s) after ping sweep.")
+    print(f"[*] Found {len(devices)} device(s) in ARP table after sweep.")
     return devices
 
 
@@ -437,17 +444,23 @@ def arp_scan(subnet: str, timeout: int = 3) -> list[dict]:
     """
     Send ARP requests across the subnet and collect responses.
 
-    On Windows, falls back to ping + `arp -a` when Scapy/Npcap is unavailable.
+    On Windows, combines Scapy/Npcap ARP (when available) with ping + arp -a
+    so devices that do not answer broadcast ARP are still discovered.
     """
     if sys.platform == "win32":
+        scapy_devices: list[dict] = []
         try:
-            devices = arp_scan_scapy(subnet, timeout)
-            if devices:
-                return devices
-            print("[!] Scapy scan found no devices, trying Windows ARP table...")
+            scapy_devices = arp_scan_scapy(subnet, timeout)
+            if scapy_devices:
+                print(f"[*] Scapy ARP found {len(scapy_devices)} device(s).")
         except Exception as exc:
             print(f"[!] Scapy scan unavailable: {exc}")
-        return arp_scan_windows(subnet)
+
+        windows_devices = arp_scan_windows(subnet)
+        merged = _merge_discovered_devices(scapy_devices, windows_devices)
+        if merged:
+            print(f"[*] Total discovered this cycle: {len(merged)} device(s).")
+        return merged
 
     return arp_scan_scapy(subnet, timeout)
 
