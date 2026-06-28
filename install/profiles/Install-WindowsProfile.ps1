@@ -67,15 +67,11 @@ Run this first (Administrator PowerShell, repo root):
         }
     }
 
-    $Register = Join-Path $InstallDir "Register-NetGuard-AutoStart.ps1"
-    if (-not (Test-Path $Register)) {
-        Copy-Item (Join-Path $RepoRoot "build\windows\Register-NetGuard-AutoStart.ps1") $Register -Force
-    }
+    $Register = Join-Path $RepoRoot "build\windows\Register-NetGuard-AutoStart.ps1"
+    Copy-Item $Register (Join-Path $InstallDir "Register-NetGuard-AutoStart.ps1") -Force
 
-    $Unregister = Join-Path $InstallDir "Unregister-NetGuard-AutoStart.ps1"
-    if (-not (Test-Path $Unregister)) {
-        Copy-Item (Join-Path $RepoRoot "build\windows\Unregister-NetGuard-AutoStart.ps1") $Unregister -Force
-    }
+    $Unregister = Join-Path $RepoRoot "build\windows\Unregister-NetGuard-AutoStart.ps1"
+    Copy-Item $Unregister (Join-Path $InstallDir "Unregister-NetGuard-AutoStart.ps1") -Force
 
     $ProfileEnv = Join-Path $ProfileDir "netguard.env"
     Copy-Item $ProfileEnv (Join-Path $DataDir "netguard.env") -Force
