@@ -288,6 +288,23 @@ configure_api_restart() {
     fi
 }
 
+configure_detector_restart() {
+    local restart_script="$INSTALL_DIR/scripts/restart-detector.sh"
+    if [[ ! -f "$restart_script" ]]; then
+        warn "Missing $restart_script — Monitoring restart buttons will not work"
+        return
+    fi
+    log "Configuring passwordless detector restart for dashboard Monitoring ..."
+    chmod 755 "$restart_script"
+    chown root:root "$restart_script"
+    local sudoers_file="/etc/sudoers.d/netguard-detector-restart"
+    printf '%s\n' "netguard ALL=(root) NOPASSWD: $restart_script" > "$sudoers_file"
+    chmod 440 "$sudoers_file"
+    if ! visudo -cf "$sudoers_file" >/dev/null 2>&1; then
+        warn "sudoers validation failed for $sudoers_file"
+    fi
+}
+
 enable_services() {
     log "Enabling NetGuard services (start on boot) ..."
     systemctl enable netguard.target
@@ -410,6 +427,7 @@ main() {
     configure_dns_relay
     configure_firewall
     configure_api_restart
+    configure_detector_restart
     enable_services
     verify_installation || true
     print_summary

@@ -12,7 +12,7 @@ import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -70,6 +70,7 @@ if _api_module_dir not in sys.path:
 
 import features as feature_routes
 import msp as msp_routes
+from features import _optional_api_key
 
 DB_PATH = resolve_db_path(PROJECT_ROOT if not getattr(sys, "frozen", False) else None)
 PORT_INSTRUCTIONS_PATH = os.path.join(
@@ -588,6 +589,145 @@ def _is_detector_service_running(detector_id: str) -> bool | None:
     return None
 
 
+def _detector_display_name(detector_id: str) -> str:
+    for spec in MONITORING_DETECTORS:
+        if spec["id"] == detector_id:
+            return spec["name"]
+    return detector_id
+
+
+def _restart_detector_windows(detector_id: str, win_process: str) -> dict:
+    create_no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+    detached = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+    new_group = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+    creation_flags = detached | new_group | create_no_window
+
+    if getattr(sys, "frozen", False):
+        install_dir = os.path.dirname(sys.executable)
+        restart_script = os.path.join(install_dir, "restart-detector.ps1")
+    else:
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        install_dir = project_root
+        restart_script = os.path.join(project_root, "scripts", "restart-detector.ps1")
+
+    if os.path.isfile(restart_script):
+        command = [
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-WindowStyle",
+            "Hidden",
+            "-File",
+            restart_script,
+            "-DetectorId",
+            detector_id,
+            "-InstallDir",
+            install_dir,
+        ]
+    else:
+        process_name = os.path.splitext(win_process)[0]
+        exe_path = os.path.join(install_dir, win_process)
+        if not os.path.isfile(exe_path):
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"restart-detector.ps1 not found and {win_process} is missing. "
+                    "Re-run the Windows install profile."
+                ),
+            )
+        ps_command = (
+            f"Stop-Process -Name '{process_name}' -Force -ErrorAction SilentlyContinue; "
+            f"Start-Sleep -Seconds 1; "
+            f"Start-Process -FilePath '{exe_path}' -WorkingDirectory '{install_dir}' "
+            "-WindowStyle Hidden"
+        )
+        command = [
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            ps_command,
+        ]
+
+    try:
+        subprocess.Popen(command, creationflags=creation_flags)
+    except OSError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Could not restart {_detector_display_name(detector_id)}: {exc}",
+        ) from exc
+
+    return {
+        "success": True,
+        "detector_id": detector_id,
+        "message": (
+            f"{_detector_display_name(detector_id)} restart initiated. "
+            "Status should update within a few seconds."
+        ),
+    }
+
+
+def _restart_detector_linux(detector_id: str, systemd_unit: str) -> dict:
+    restart_script = "/opt/netguard/scripts/restart-detector.sh"
+    if not os.path.isfile(restart_script):
+        restart_script = os.path.join(PROJECT_ROOT, "scripts", "restart-detector.sh")
+
+    if os.path.isfile(restart_script):
+        command = ["sudo", "-n", restart_script, detector_id]
+    else:
+        command = ["sudo", "-n", "/bin/systemctl", "restart", systemd_unit]
+
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Could not restart {_detector_display_name(detector_id)}: {exc}",
+        ) from exc
+
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                detail
+                or (
+                    f"Restart failed for {_detector_display_name(detector_id)}. "
+                    "Re-run Pi install to configure passwordless sudo."
+                )
+            ),
+        )
+
+    return {
+        "success": True,
+        "detector_id": detector_id,
+        "message": (
+            f"{_detector_display_name(detector_id)} restarted successfully."
+        ),
+    }
+
+
+def _restart_detector_service(detector_id: str) -> dict:
+    entry = _DETECTOR_SERVICE_MAP.get(detector_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Unknown detector: {detector_id}")
+
+    systemd_unit, win_process = entry
+    if sys.platform == "win32":
+        return _restart_detector_windows(detector_id, win_process)
+    return _restart_detector_linux(detector_id, systemd_unit)
+
+
 def _detector_runtime_status(
     last_activity: str | None,
     stale_seconds: int,
@@ -1028,6 +1168,7 @@ def api_info() -> dict:
             "GET /alerts/security",
             "GET /alerts/security/critical",
             "GET /monitoring/status",
+            "POST /monitoring/restart/{detector_id}",
             "GET /inbound/{device_ip}",
             "GET /dhcp/servers",
             "GET /dns",
@@ -1826,6 +1967,15 @@ def monitoring_status() -> dict:
         return _build_monitoring_status(conn)
     finally:
         conn.close()
+
+
+@app.post(
+    "/monitoring/restart/{detector_id}",
+    dependencies=[Depends(_optional_api_key)],
+)
+def restart_monitoring_detector(detector_id: str) -> dict:
+    """Restart a background detector service (systemd on Pi, process on Windows)."""
+    return _restart_detector_service(detector_id)
 
 
 @app.get("/health")
