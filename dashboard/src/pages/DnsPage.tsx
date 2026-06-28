@@ -5,6 +5,7 @@ import type { DnsQuery, DnsResponse } from "../types";
 import { DNS_REFRESH_MS } from "../config";
 import { categorizeDomain } from "../utils/categorize";
 import { formatTimestamp } from "../utils/format";
+import { useSystemDetection } from "../hooks/useSystemDetection";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ScannerOffline from "../components/ScannerOffline";
 
@@ -70,6 +71,7 @@ function DeviceDnsCell({ query }: { query: DnsQuery }) {
 }
 
 export default function DnsPage() {
+  const { systemType } = useSystemDetection();
   const [queries, setQueries] = useState<DnsResponse["queries"]>([]);
   const [filter, setFilter] = useState<DnsFilter>("all");
   const [loading, setLoading] = useState(true);
@@ -150,6 +152,14 @@ export default function DnsPage() {
         <p className="mt-1 text-sm text-gray-400">
           Recent DNS queries across your network — refreshes every 10s
         </p>
+        {systemType === "pi" && (
+          <p className="mt-2 text-xs text-amber-300/90">
+            Only seeing router and Pi? Other devices use the Linksys DNS directly.
+            Enable <code className="text-amber-200">NETGUARD_DNS_RELAY=1</code> in{" "}
+            <code className="text-amber-200">/etc/netguard/netguard.env</code>, re-run Pi
+            install, then set your router DHCP DNS server to the Pi&apos;s IP address.
+          </p>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2">
