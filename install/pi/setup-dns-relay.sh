@@ -33,7 +33,7 @@ fi
 
 mkdir -p "$(dirname "$DNSMASQ_LOG_PATH")"
 touch "$DNSMASQ_LOG_PATH"
-chmod 664 "$DNSMASQ_LOG_PATH"
+chmod 666 "$DNSMASQ_LOG_PATH"
 
 apt-get install -y --no-install-recommends dnsmasq
 
@@ -48,12 +48,29 @@ EOF
     fi
 fi
 
+# Avoid "illegal repeated keyword" — stock dnsmasq.conf often duplicates bind/listen options.
+if [[ ! -f /etc/dnsmasq.conf.netguard-backup ]]; then
+    cp /etc/dnsmasq.conf /etc/dnsmasq.conf.netguard-backup
+fi
+
+cat >/etc/dnsmasq.conf <<'EOF'
+# NetGuard DNS relay — settings live in /etc/dnsmasq.d/netguard.conf only.
+conf-dir=/etc/dnsmasq.d/,*.conf
+EOF
+
+mkdir -p /etc/dnsmasq.d
+for dropin in /etc/dnsmasq.d/*; do
+  [[ -e "$dropin" ]] || continue
+  base="$(basename "$dropin")"
+  [[ "$base" == "netguard.conf" || "$base" == "README" ]] && continue
+  mv -f "$dropin" "${dropin}.netguard-disabled"
+done
+
 cat >/etc/dnsmasq.d/netguard.conf <<EOF
 # NetGuard LAN DNS relay — logs queries for the dashboard DNS page.
 # Set your router DHCP DNS server to: $LAN_IP
-bind-dynamic
 interface=$IFACE
-except-interface=lo
+bind-interfaces
 listen-address=$LAN_IP
 port=53
 log-queries
@@ -62,6 +79,13 @@ server=$GATEWAY
 no-resolv
 cache-size=1000
 EOF
+
+if ! dnsmasq --test 2>/tmp/dnsmasq-test.err; then
+    echo "[!] dnsmasq configuration test failed:"
+    cat /tmp/dnsmasq-test.err
+    echo "[*] Restored backup is at /etc/dnsmasq.conf.netguard-backup"
+    exit 1
+fi
 
 systemctl enable dnsmasq
 systemctl restart dnsmasq
