@@ -191,6 +191,20 @@ export interface DnsDeviceInfo {
   known: boolean;
 }
 
+export interface DnsDeviceSummary {
+  source_ip: string;
+  query_count: number;
+  suspicious_count: number;
+  last_query_at: string;
+  latest_domain: string | null;
+  device: DnsDeviceInfo | null;
+}
+
+export interface DnsDevicesResponse {
+  count: number;
+  devices: DnsDeviceSummary[];
+}
+
 export interface DnsQuery {
   id: number;
   timestamp: string;

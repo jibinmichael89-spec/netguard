@@ -393,26 +393,42 @@ def _read_windows_arp_table(network: ipaddress.IPv4Network) -> list[dict]:
 
 
 def _ping_host(ip: str) -> None:
-    subprocess.run(
-        ["ping", "-n", "1", "-w", "200", ip],
-        capture_output=True,
-        timeout=3,
-        check=False,
-    )
-
-
-def _windows_ping_sweep(local_ip: str) -> None:
-    """Ping the subnet in parallel to populate the Windows ARP cache."""
-    octets = local_ip.split(".")
-    prefix = f"{octets[0]}.{octets[1]}.{octets[2]}."
-    gateway = f"{prefix}1"
-    for target in (gateway, local_ip):
+    if sys.platform == "win32":
         subprocess.run(
-            ["ping", "-n", "1", "-w", "500", target],
+            ["ping", "-n", "1", "-w", "200", ip],
             capture_output=True,
             timeout=3,
             check=False,
         )
+    else:
+        subprocess.run(
+            ["ping", "-c", "1", "-W", "1", ip],
+            capture_output=True,
+            timeout=3,
+            check=False,
+        )
+
+
+def _subnet_ping_sweep(local_ip: str) -> None:
+    """Ping the subnet in parallel to populate the ARP/neighbour table."""
+    octets = local_ip.split(".")
+    prefix = f"{octets[0]}.{octets[1]}.{octets[2]}."
+    gateway = f"{prefix}1"
+    for target in (gateway, local_ip):
+        if sys.platform == "win32":
+            subprocess.run(
+                ["ping", "-n", "1", "-w", "500", target],
+                capture_output=True,
+                timeout=3,
+                check=False,
+            )
+        else:
+            subprocess.run(
+                ["ping", "-c", "1", "-W", "2", target],
+                capture_output=True,
+                timeout=3,
+                check=False,
+            )
 
     targets = [
         f"{prefix}{last_octet}"
@@ -434,9 +450,64 @@ def arp_scan_windows(subnet: str) -> list[dict]:
     network = ipaddress.IPv4Network(subnet, strict=False)
     print("[*] Using Windows ARP table discovery ...")
     print("[*] Running parallel ping sweep to discover LAN devices ...")
-    _windows_ping_sweep(_detect_local_ip())
+    _subnet_ping_sweep(_detect_local_ip())
     devices = _read_windows_arp_table(network)
     print(f"[*] Found {len(devices)} device(s) in ARP table after sweep.")
+    return devices
+
+
+def _read_linux_neigh_table(network: ipaddress.IPv4Network) -> list[dict]:
+    """Read the kernel neighbour (ARP) table on Linux/Pi."""
+    result = subprocess.run(
+        ["ip", "-4", "neigh", "show"],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+    )
+
+    devices: list[dict] = []
+    seen: set[str] = set()
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if not line or "lladdr" not in line:
+            continue
+        parts = line.split()
+        ip = parts[0]
+        if ip.count(".") != 3:
+            continue
+        try:
+            mac_idx = parts.index("lladdr") + 1
+            mac_raw = parts[mac_idx]
+        except (ValueError, IndexError):
+            continue
+        if not _is_valid_mac(mac_raw):
+            continue
+        try:
+            addr = ipaddress.IPv4Address(ip)
+        except ValueError:
+            continue
+        if addr not in network:
+            continue
+        if ip in seen:
+            continue
+        seen.add(ip)
+        devices.append({"ip_address": ip, "mac_address": _normalize_mac(mac_raw)})
+    return devices
+
+
+def arp_scan_linux(subnet: str) -> list[dict]:
+    """
+    Discover devices using a subnet ping sweep plus the kernel neighbour table.
+
+    Helps on Pi/mesh Wi-Fi where broadcast ARP alone may only find the router.
+    """
+    network = ipaddress.IPv4Network(subnet, strict=False)
+    print("[*] Using Linux neighbour table discovery ...")
+    print("[*] Running parallel ping sweep to discover LAN devices ...")
+    _subnet_ping_sweep(_detect_local_ip())
+    devices = _read_linux_neigh_table(network)
+    print(f"[*] Found {len(devices)} device(s) in neighbour table after sweep.")
     return devices
 
 
@@ -462,7 +533,19 @@ def arp_scan(subnet: str, timeout: int = 3) -> list[dict]:
             print(f"[*] Total discovered this cycle: {len(merged)} device(s).")
         return merged
 
-    return arp_scan_scapy(subnet, timeout)
+    scapy_devices: list[dict] = []
+    try:
+        scapy_devices = arp_scan_scapy(subnet, max(timeout, 5))
+        if scapy_devices:
+            print(f"[*] Scapy ARP found {len(scapy_devices)} device(s).")
+    except Exception as exc:
+        print(f"[!] Scapy scan unavailable: {exc}")
+
+    linux_devices = arp_scan_linux(subnet)
+    merged = _merge_discovered_devices(scapy_devices, linux_devices)
+    if merged:
+        print(f"[*] Total discovered this cycle: {len(merged)} device(s).")
+    return merged
 
 
 # ---------------------------------------------------------------------------

@@ -365,6 +365,85 @@ def _dns_query_row_to_dict(row: sqlite3.Row) -> dict:
     return data
 
 
+def _dns_device_info(conn: sqlite3.Connection, source_ip: str) -> dict | None:
+    """Load dashboard device fields for a DNS source IP."""
+    cursor = conn.cursor()
+    cursor.execute(
+        f"SELECT {DEVICE_SELECT_SQL} FROM devices WHERE ip_address = ?",
+        (source_ip,),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        return None
+    device = rows_to_device_dicts([row])[0]
+    return {
+        "id": device["id"],
+        "ip_address": source_ip,
+        "mac_address": device.get("mac_address"),
+        "hostname": device.get("hostname"),
+        "vendor": device.get("vendor"),
+        "device_tag": device.get("device_tag"),
+        "device_category": device.get("device_category"),
+        "status": device.get("status"),
+        "is_blocked": device.get("is_blocked"),
+        "risk_level": device.get("risk_level"),
+        "known": True,
+    }
+
+
+def _fetch_dns_device_summaries(
+    conn: sqlite3.Connection,
+    *,
+    suspicious_only: bool = False,
+    limit: int = 100,
+) -> list[dict]:
+    """Return one DNS summary row per source device."""
+    having_sql = (
+        " HAVING SUM(CASE WHEN is_suspicious = 1 THEN 1 ELSE 0 END) > 0"
+        if suspicious_only
+        else ""
+    )
+    cursor = conn.cursor()
+    cursor.execute(
+        f"""
+        SELECT
+            source_ip,
+            COUNT(*) AS query_count,
+            MAX(timestamp) AS last_query_at,
+            SUM(CASE WHEN is_suspicious = 1 THEN 1 ELSE 0 END) AS suspicious_count
+        FROM dns_queries
+        GROUP BY source_ip
+        {having_sql}
+        ORDER BY last_query_at DESC
+        LIMIT ?
+        """,
+        (limit,),
+    )
+    summaries: list[dict] = []
+    for row in cursor.fetchall():
+        source_ip = row["source_ip"]
+        latest = conn.execute(
+            """
+            SELECT domain FROM dns_queries
+            WHERE source_ip = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (source_ip,),
+        ).fetchone()
+        summaries.append(
+            {
+                "source_ip": source_ip,
+                "query_count": int(row["query_count"]),
+                "suspicious_count": int(row["suspicious_count"] or 0),
+                "last_query_at": row["last_query_at"],
+                "latest_domain": latest["domain"] if latest else None,
+                "device": _dns_device_info(conn, source_ip),
+            }
+        )
+    return summaries
+
+
 def _fetch_dns_queries(
     conn: sqlite3.Connection,
     *,
@@ -952,6 +1031,7 @@ def api_info() -> dict:
             "GET /inbound/{device_ip}",
             "GET /dhcp/servers",
             "GET /dns",
+            "GET /dns/devices",
             "GET /dns/suspicious",
             "GET /dns/summary",
             "GET /ports",
@@ -1443,6 +1523,19 @@ def list_dhcp_servers() -> dict:
         "untrusted_count": untrusted_count,
         "servers": servers,
     }
+
+
+@app.get("/dns/devices")
+def list_dns_devices(suspicious_only: bool = Query(default=False)) -> dict:
+    """
+    Return one summary row per device that has DNS activity.
+
+    Use the device detail timeline for full per-device DNS history.
+    """
+    conn = get_db_connection()
+    devices = _fetch_dns_device_summaries(conn, suspicious_only=suspicious_only)
+    conn.close()
+    return {"count": len(devices), "devices": devices}
 
 
 @app.get("/dns")

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { ChevronRight } from "lucide-react";
 import { apiFetch } from "../api";
-import type { DnsQuery, DnsResponse } from "../types";
+import type { DnsDeviceInfo, DnsDeviceSummary, DnsDevicesResponse } from "../types";
 import { DNS_REFRESH_MS } from "../config";
 import { categorizeDomain } from "../utils/categorize";
 import { formatTimestamp } from "../utils/format";
@@ -17,41 +18,28 @@ const FILTER_OPTIONS: { id: DnsFilter; label: string }[] = [
   { id: "warnings", label: "Warnings" },
 ];
 
-function filterQueries(queries: DnsQuery[], filter: DnsFilter): DnsQuery[] {
-  if (filter === "all") {
-    return queries;
-  }
-  return queries.filter((query) => query.is_suspicious === 1);
-}
-
-function DeviceDnsCell({ query }: { query: DnsQuery }) {
-  const device = query.device;
-
+function DeviceDnsCell({
+  sourceIp,
+  device,
+}: {
+  sourceIp: string;
+  device: DnsDeviceInfo | null;
+}) {
   if (!device) {
     return (
       <div className="space-y-0.5">
-        <Link
-          to={`/device/${query.source_ip}`}
-          className="font-mono text-ng-accent hover:underline"
-        >
-          {query.source_ip}
-        </Link>
+        <span className="font-mono text-ng-accent">{sourceIp}</span>
         <p className="text-xs text-gray-500">Device not in inventory yet</p>
       </div>
     );
   }
 
-  const displayName = device.hostname || device.device_tag || query.source_ip;
+  const displayName = device.hostname || device.device_tag || sourceIp;
 
   return (
     <div className="space-y-0.5">
-      <Link
-        to={`/device/${query.source_ip}`}
-        className="font-medium text-white hover:text-ng-accent"
-      >
-        {displayName}
-      </Link>
-      <p className="font-mono text-xs text-ng-accent">{query.source_ip}</p>
+      <span className="font-medium text-white">{displayName}</span>
+      <p className="font-mono text-xs text-ng-accent">{sourceIp}</p>
       <p className="text-xs text-gray-400">
         {device.mac_address}
         {device.vendor ? ` · ${device.vendor}` : ""}
@@ -72,7 +60,7 @@ function DeviceDnsCell({ query }: { query: DnsQuery }) {
 
 export default function DnsPage() {
   const { systemType } = useSystemDetection();
-  const [queries, setQueries] = useState<DnsResponse["queries"]>([]);
+  const [devices, setDevices] = useState<DnsDeviceSummary[]>([]);
   const [filter, setFilter] = useState<DnsFilter>("all");
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
@@ -80,8 +68,8 @@ export default function DnsPage() {
   const fetchDns = useCallback(async (isInitial = false) => {
     if (isInitial) setLoading(true);
     try {
-      const data = await apiFetch<DnsResponse>("/dns");
-      setQueries(data.queries);
+      const data = await apiFetch<DnsDevicesResponse>("/dns/devices");
+      setDevices(data.devices);
       setOffline(false);
     } catch {
       setOffline(true);
@@ -96,24 +84,28 @@ export default function DnsPage() {
     return () => clearInterval(interval);
   }, [fetchDns]);
 
-  const suspiciousCount = useMemo(
-    () => queries.filter((query) => query.is_suspicious === 1).length,
-    [queries],
+  const allDevices = useMemo(() => devices, [devices]);
+
+  const suspiciousDeviceCount = useMemo(
+    () => devices.filter((entry) => entry.suspicious_count > 0).length,
+    [devices],
   );
 
   const filterCounts: Record<DnsFilter, number> = useMemo(
     () => ({
-      all: queries.length,
-      critical: suspiciousCount,
-      warnings: suspiciousCount,
+      all: allDevices.length,
+      critical: suspiciousDeviceCount,
+      warnings: suspiciousDeviceCount,
     }),
-    [queries.length, suspiciousCount],
+    [allDevices.length, suspiciousDeviceCount],
   );
 
-  const filteredQueries = useMemo(
-    () => filterQueries(queries, filter),
-    [queries, filter],
-  );
+  const visibleDevices = useMemo(() => {
+    if (filter === "all") {
+      return devices;
+    }
+    return devices.filter((entry) => entry.suspicious_count > 0);
+  }, [devices, filter]);
 
   if (loading) {
     return <LoadingSpinner label="Loading DNS activity..." fullPage />;
@@ -130,15 +122,14 @@ export default function DnsPage() {
     );
   }
 
-  if (queries.length === 0) {
+  if (devices.length === 0) {
     return (
       <div className="space-y-6">
         <div>
           <h2 className="text-2xl font-bold text-white">DNS Activity</h2>
           <p className="mt-1 text-sm text-gray-400">
-            No DNS lookups recorded yet. Browse a few websites on this PC, then
-            wait for the next scan cycle (about 30 seconds). On Windows, DNS
-            shows lookups from this computer.
+            No DNS lookups recorded yet. On Pi, enable DNS relay and set router DHCP
+            DNS to this Pi, then browse from another device.
           </p>
         </div>
       </div>
@@ -150,14 +141,12 @@ export default function DnsPage() {
       <div>
         <h2 className="text-2xl font-bold text-white">DNS Activity</h2>
         <p className="mt-1 text-sm text-gray-400">
-          Recent DNS queries across your network — refreshes every 10s
+          One row per device — click a device for full DNS history in its timeline
         </p>
         {systemType === "pi" && (
           <p className="mt-2 text-xs text-amber-300/90">
-            Only seeing router and Pi? Other devices use the Linksys DNS directly.
-            Enable <code className="text-amber-200">NETGUARD_DNS_RELAY=1</code> in{" "}
-            <code className="text-amber-200">/etc/netguard/netguard.env</code>, re-run Pi
-            install, then set your router DHCP DNS server to the Pi&apos;s IP address.
+            Only router and Pi? Set Linksys DHCP DNS to this Pi&apos;s IP after enabling{" "}
+            <code className="text-amber-200">NETGUARD_DNS_RELAY=1</code>.
           </p>
         )}
       </div>
@@ -187,31 +176,30 @@ export default function DnsPage() {
           <table className="w-full min-w-[900px] text-left text-sm">
             <thead>
               <tr className="border-b border-ng-border text-xs uppercase tracking-wider text-gray-500">
-                <th className="px-4 py-3 font-medium">Time</th>
+                <th className="px-4 py-3 font-medium">Last activity</th>
                 <th className="px-4 py-3 font-medium">Device</th>
-                <th className="px-4 py-3 font-medium">Domain</th>
-                <th className="px-4 py-3 font-medium">Category</th>
+                <th className="px-4 py-3 font-medium">Queries</th>
+                <th className="px-4 py-3 font-medium">Latest domain</th>
+                <th className="px-4 py-3 font-medium" />
               </tr>
             </thead>
             <tbody className="divide-y divide-ng-border">
-              {filteredQueries.length === 0 ? (
+              {visibleDevices.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-gray-500">
-                    {queries.length === 0
-                      ? "No DNS queries captured yet."
-                      : "No queries match this filter."}
+                  <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                    No devices match this filter.
                   </td>
                 </tr>
               ) : (
-                filteredQueries.map((query) => {
-                  const suspicious = query.is_suspicious === 1;
-                  const warningView = filter === "warnings" && suspicious;
+                visibleDevices.map((entry) => {
+                  const hasSuspicious = entry.suspicious_count > 0;
+                  const warningView = filter === "warnings" && hasSuspicious;
 
                   return (
                     <tr
-                      key={query.id}
+                      key={entry.source_ip}
                       className={
-                        suspicious
+                        hasSuspicious
                           ? warningView
                             ? "bg-ng-warning/10 hover:bg-ng-warning/15"
                             : "bg-ng-alert/10 hover:bg-ng-alert/15"
@@ -219,35 +207,42 @@ export default function DnsPage() {
                       }
                     >
                       <td className="px-4 py-3 text-gray-400">
-                        {formatTimestamp(query.timestamp)}
+                        {formatTimestamp(entry.last_query_at)}
                       </td>
                       <td className="px-4 py-3">
-                        <DeviceDnsCell query={query} />
+                        <DeviceDnsCell
+                          sourceIp={entry.source_ip}
+                          device={entry.device}
+                        />
                       </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={
-                            suspicious
-                              ? warningView
-                                ? "font-medium text-ng-warning"
-                                : "font-medium text-ng-alert"
-                              : "text-gray-300"
-                          }
-                        >
-                          {query.domain}
-                        </span>
-                        {suspicious && query.reason && (
-                          <p
-                            className={`mt-0.5 text-xs ${
-                              warningView ? "text-ng-warning/80" : "text-ng-alert/80"
-                            }`}
-                          >
-                            {query.reason}
-                          </p>
+                      <td className="px-4 py-3 text-gray-300">
+                        {entry.query_count}
+                        {entry.suspicious_count > 0 && (
+                          <span className="ml-2 text-xs text-ng-alert">
+                            ({entry.suspicious_count} flagged)
+                          </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-gray-400">
-                        {categorizeDomain(query.domain)}
+                      <td className="px-4 py-3">
+                        {entry.latest_domain ? (
+                          <div>
+                            <span className="text-gray-300">{entry.latest_domain}</span>
+                            <p className="mt-0.5 text-xs text-gray-500">
+                              {categorizeDomain(entry.latest_domain)}
+                            </p>
+                          </div>
+                        ) : (
+                          <span className="text-gray-500">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Link
+                          to={`/device/${entry.source_ip}`}
+                          className="inline-flex items-center gap-1 text-sm font-medium text-ng-accent hover:underline"
+                        >
+                          Full history
+                          <ChevronRight className="h-4 w-4" />
+                        </Link>
                       </td>
                     </tr>
                   );
