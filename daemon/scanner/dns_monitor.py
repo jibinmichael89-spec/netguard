@@ -561,6 +561,17 @@ def monitor_dnsmasq_log(log_path: str = DNSMASQ_LOG_PATH) -> None:
 # Main entry point
 # ---------------------------------------------------------------------------
 
+def _default_capture_interface() -> str | None:
+    """Pick the interface used for the default route (LAN on Pi)."""
+    try:
+        from scapy.all import conf
+
+        _gw, iface, _addr = conf.route.route("8.8.8.8")
+        return iface or None
+    except Exception:
+        return None
+
+
 def main() -> None:
     """
     Entry point: initialise the database and start continuous DNS capture.
@@ -584,15 +595,25 @@ def main() -> None:
 
     require_root()
 
+    capture_iface = os.environ.get("NETGUARD_CAPTURE_IFACE", "").strip() or _default_capture_interface()
     print(f"Capture filter: {DNS_BPF_FILTER}")
+    if capture_iface:
+        print(f"Capture interface: {capture_iface} (promiscuous)")
+    else:
+        print("Capture interface: default")
     print("Press Ctrl+C to stop.\n")
 
+    sniff_kwargs: dict = {
+        "filter": DNS_BPF_FILTER,
+        "prn": process_packet,
+        "store": False,
+        "promisc": True,
+    }
+    if capture_iface:
+        sniff_kwargs["iface"] = capture_iface
+
     try:
-        sniff(
-            filter=DNS_BPF_FILTER,
-            prn=process_packet,
-            store=False,
-        )
+        sniff(**sniff_kwargs)
     except KeyboardInterrupt:
         print("\n[!] DNS monitor stopped by user.")
         sys.exit(0)

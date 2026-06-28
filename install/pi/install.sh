@@ -237,6 +237,33 @@ install_systemd_units() {
     systemctl daemon-reload
 }
 
+configure_dns_relay() {
+    local enabled=""
+    if [[ -f "$ENV_FILE" ]]; then
+        enabled="$(grep -E '^\s*NETGUARD_DNS_RELAY=' "$ENV_FILE" | tail -1 | cut -d= -f2 | tr -d ' \r' || true)"
+    fi
+    if [[ "$enabled" != "1" ]]; then
+        log "DNS relay disabled (set NETGUARD_DNS_RELAY=1 in $ENV_FILE to log all LAN DNS)"
+        return
+    fi
+
+    local relay_script=""
+    if [[ -f "$SOURCE_DIR/install/pi/setup-dns-relay.sh" ]]; then
+        relay_script="$SOURCE_DIR/install/pi/setup-dns-relay.sh"
+    elif [[ -f "$SCRIPT_DIR/setup-dns-relay.sh" ]]; then
+        relay_script="$SCRIPT_DIR/setup-dns-relay.sh"
+    fi
+
+    if [[ -z "$relay_script" ]]; then
+        warn "setup-dns-relay.sh not found — skipping DNS relay setup"
+        return
+    fi
+
+    chmod +x "$relay_script"
+    log "Enabling Pi DNS relay (dnsmasq) for full-network DNS logging ..."
+    bash "$relay_script" "$ENV_FILE" || warn "DNS relay setup failed — DNS page may only show Pi/router traffic"
+}
+
 configure_firewall() {
     if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -qi "Status: active"; then
         log "Opening firewall port 8000 for dashboard access ..."
@@ -380,6 +407,7 @@ main() {
     install_env_file
     migrate_existing_database
     install_systemd_units
+    configure_dns_relay
     configure_firewall
     configure_api_restart
     enable_services
