@@ -432,6 +432,32 @@ _DETECTOR_SERVICE_MAP: dict[str, tuple[str, str]] = {
     "policy_engine": ("netguard-policy-engine.service", "policy-engine.exe"),
 }
 
+_LINUX_PROCESS_PATTERNS: dict[str, str] = {
+    "arp_scanner": "arp_scanner.py",
+    "risk_scorer": "risk_scorer.py",
+    "arp_spoof": "arp_spoof_detector.py",
+    "dns_monitor": "dns_monitor.py",
+    "rogue_dhcp": "rogue_dhcp_detector.py",
+    "inbound": "inbound_connection_detector.py",
+    "policy_engine": "policy_engine.py",
+}
+
+
+def _linux_process_running(detector_id: str) -> bool:
+    pattern = _LINUX_PROCESS_PATTERNS.get(detector_id)
+    if not pattern:
+        return False
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", pattern],
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
 
 def _is_detector_service_running(detector_id: str) -> bool | None:
     """Return whether the detector process/service is running, or None if unknown."""
@@ -459,9 +485,28 @@ def _is_detector_service_running(detector_id: str) -> bool | None:
             timeout=5,
             check=False,
         )
-        return result.returncode == 0
+        if result.returncode == 0:
+            return True
+        if result.returncode in (3, 4):
+            return False
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+    if _linux_process_running(detector_id):
+        return True
+
+    try:
+        result = subprocess.run(
+            ["systemctl", "is-active", "--quiet", systemd_unit],
+            timeout=5,
+            check=False,
+        )
+        if result.returncode in (3, 4):
+            return False
     except (OSError, subprocess.TimeoutExpired):
         return None
+
+    return None
 
 
 def _detector_runtime_status(

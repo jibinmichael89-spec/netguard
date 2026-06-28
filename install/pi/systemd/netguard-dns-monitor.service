@@ -8,6 +8,7 @@ Type=simple
 User=root
 WorkingDirectory=/opt/netguard
 EnvironmentFile=/etc/netguard/netguard.env
+Environment=PYTHONPATH=/opt/netguard:/opt/netguard/daemon:/opt/netguard/daemon/scanner
 ExecStart=/opt/netguard/venv/bin/python daemon/scanner/dns_monitor.py
 Restart=on-failure
 RestartSec=10
