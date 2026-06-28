@@ -177,6 +177,20 @@ export interface InboundAttemptsResponse {
   inbound_attempts: InboundAttempt[];
 }
 
+export interface DnsDeviceInfo {
+  id: number;
+  ip_address: string;
+  mac_address: string;
+  hostname: string | null;
+  vendor: string | null;
+  device_tag: string | null;
+  device_category: string | null;
+  status: string;
+  is_blocked?: number;
+  risk_level: string | null;
+  known: boolean;
+}
+
 export interface DnsQuery {
   id: number;
   timestamp: string;
@@ -186,6 +200,7 @@ export interface DnsQuery {
   response_ip: string | null;
   is_suspicious: number;
   reason: string | null;
+  device: DnsDeviceInfo | null;
 }
 
 export interface DnsResponse {

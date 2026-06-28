@@ -330,6 +330,67 @@ def rows_to_dicts(rows: list[sqlite3.Row]) -> list[dict]:
     return [dict(row) for row in rows]
 
 
+_DNS_DEVICE_FIELDS = (
+    "id",
+    "mac_address",
+    "hostname",
+    "vendor",
+    "device_tag",
+    "device_category",
+    "status",
+    "is_blocked",
+    "risk_level",
+)
+
+
+def _dns_query_row_to_dict(row: sqlite3.Row) -> dict:
+    """Map a joined dns_queries + devices row to API shape with nested device."""
+    data = dict(row)
+    device_id = data.pop("device_id", None)
+    device: dict | None = None
+    if device_id is not None:
+        device = {"id": device_id, "ip_address": data.get("source_ip")}
+        for field in _DNS_DEVICE_FIELDS:
+            if field == "id":
+                continue
+            prefixed = f"device_{field}"
+            if prefixed in data:
+                device[field] = data.pop(prefixed)
+        device["known"] = True
+    else:
+        for field in _DNS_DEVICE_FIELDS:
+            data.pop(f"device_{field}", None)
+
+    data["device"] = device
+    return data
+
+
+def _fetch_dns_queries(
+    conn: sqlite3.Connection,
+    *,
+    where_sql: str = "",
+    params: tuple = (),
+    limit: int | None = 100,
+) -> list[dict]:
+    """Return DNS queries with optional device details from the devices table."""
+    device_select = ", ".join(
+        f"d.{field} AS device_{field}" for field in _DNS_DEVICE_FIELDS
+    )
+    sql = f"""
+        SELECT q.*, {device_select}
+        FROM dns_queries q
+        LEFT JOIN devices d ON d.ip_address = q.source_ip
+    """
+    if where_sql:
+        sql += f" WHERE {where_sql}"
+    sql += " ORDER BY q.id DESC"
+    if limit is not None:
+        sql += f" LIMIT {int(limit)}"
+    cursor = conn.cursor()
+    cursor.execute(sql, params)
+    return [_dns_query_row_to_dict(row) for row in cursor.fetchall()]
+
+
 def _parse_iso_timestamp(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -1344,18 +1405,11 @@ def list_dns_queries() -> dict:
     """
     Return the last 100 DNS queries captured by the DNS monitor.
 
-    Ordered by most recent first.
+    Each query includes matched device details (hostname, MAC, vendor) when
+    the source IP is known in the devices table.
     """
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        SELECT * FROM dns_queries
-        ORDER BY id DESC
-        LIMIT 100
-        """
-    )
-    queries = rows_to_dicts(cursor.fetchall())
+    queries = _fetch_dns_queries(conn, limit=100)
     conn.close()
     return {"count": len(queries), "queries": queries}
 
@@ -1365,18 +1419,10 @@ def list_suspicious_dns() -> dict:
     """
     Return all DNS queries flagged as suspicious.
 
-    Includes the reason each query was flagged.
+    Includes device details when the source IP matches a known device.
     """
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        SELECT * FROM dns_queries
-        WHERE is_suspicious = 1
-        ORDER BY id DESC
-        """
-    )
-    queries = rows_to_dicts(cursor.fetchall())
+    queries = _fetch_dns_queries(conn, where_sql="q.is_suspicious = 1", limit=None)
     conn.close()
     return {"count": len(queries), "queries": queries}
 

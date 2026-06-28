@@ -18,9 +18,6 @@ def ensure_db_directory(db_path: str) -> None:
 
 def load_netguard_env() -> None:
     """Load NETGUARD_* variables from the platform install env file when unset."""
-    if os.environ.get("NETGUARD_DB_PATH"):
-        return
-
     env_paths: list[str] = []
     if sys.platform == "win32":
         program_data = os.environ.get("ProgramData", r"C:\ProgramData")
