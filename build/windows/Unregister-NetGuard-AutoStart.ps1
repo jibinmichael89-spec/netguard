@@ -3,13 +3,22 @@
 .SYNOPSIS
   Remove NetGuard scheduled tasks on uninstall.
 #>
+$ErrorActionPreference = "Stop"
+
+function Remove-ScheduledTaskIfExists([string]$TaskName) {
+    $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if ($null -ne $existing) {
+        Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+    }
+}
+
 $TaskNames = @(
     "NetGuard Services",
     "NetGuard Threat Intel",
     "NetGuard MSP Heartbeat"
 )
 foreach ($Name in $TaskNames) {
-    schtasks /Delete /TN $Name /F 2>$null | Out-Null
+    Remove-ScheduledTaskIfExists -TaskName $Name
 }
 [Environment]::SetEnvironmentVariable("NETGUARD_DB_PATH", $null, "Machine")
 [Environment]::SetEnvironmentVariable("NETGUARD_PROFILE", $null, "Machine")

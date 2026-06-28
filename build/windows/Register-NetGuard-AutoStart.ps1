@@ -14,6 +14,13 @@ $InstallDir = $InstallDir.TrimEnd('\')
 $DataDir = Join-Path $env:ProgramData "NetGuard"
 New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
 
+function Remove-ScheduledTaskIfExists([string]$TaskName) {
+    $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if ($null -ne $existing) {
+        Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+    }
+}
+
 $EnvFile = Join-Path $DataDir "netguard.env"
 if (-not (Test-Path $EnvFile)) {
     $Template = Join-Path $InstallDir "netguard.env"
@@ -55,7 +62,7 @@ $TaskNames = @(
     "NetGuard MSP Heartbeat"
 )
 foreach ($Name in $TaskNames) {
-    schtasks /Delete /TN $Name /F 2>$null | Out-Null
+    Remove-ScheduledTaskIfExists -TaskName $Name
 }
 
 $Principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
