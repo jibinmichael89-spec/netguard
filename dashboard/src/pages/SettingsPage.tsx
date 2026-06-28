@@ -40,7 +40,7 @@ export default function SettingsPage() {
   const [routerForm, setRouterForm] = useState<RouterConfigUpdate>({
     router_type: "",
     router_url: "",
-    router_user: "root",
+    router_user: "admin",
     router_password: "",
     router_token: "",
   });
@@ -66,7 +66,7 @@ export default function SettingsPage() {
       setRouterForm({
         router_type: router.router_type || "",
         router_url: router.router_url || "",
-        router_user: router.router_user || "root",
+        router_user: router.router_user || "admin",
         router_password: router.router_password || "",
         router_token: router.router_token || "",
       });
@@ -172,7 +172,21 @@ export default function SettingsPage() {
   };
 
   const updateRouterField = (key: keyof RouterConfigUpdate, value: string) => {
-    setRouterForm((prev) => ({ ...prev, [key]: value }));
+    setRouterForm((prev) => {
+      const next = { ...prev, [key]: value };
+      if (key === "router_type") {
+        const type = value.toLowerCase();
+        const user = (prev.router_user || "").trim();
+        if (type === "linksys" || type === "velop") {
+          if (!user || user === "root") {
+            next.router_user = "admin";
+          }
+        } else if (type === "openwrt" && (!user || user === "admin")) {
+          next.router_user = "root";
+        }
+      }
+      return next;
+    });
   };
 
   const buildRouterPayload = (): RouterConfigUpdate => ({
@@ -215,7 +229,7 @@ export default function SettingsPage() {
       setRouterForm({
         router_type: updated.router_type || "",
         router_url: updated.router_url || "",
-        router_user: updated.router_user || "root",
+        router_user: updated.router_user || "admin",
         router_password: updated.router_password || "",
         router_token: updated.router_token || "",
       });
@@ -483,9 +497,10 @@ export default function SettingsPage() {
 
           {routerSettings.env_overrides.length > 0 && (
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-              Some values in <code>/etc/netguard/netguard.env</code> override saved settings (
-              {routerSettings.env_overrides.join(", ")}). Remove them from the env file to use
-              the dashboard values below.
+              Some values in your install env file override saved settings (
+              {routerSettings.env_overrides.join(", ")}). Remove them from{" "}
+              <code>%ProgramData%\NetGuard\netguard.env</code> (Windows) or{" "}
+              <code>/etc/netguard/netguard.env</code> (Pi) to use the dashboard values below.
             </div>
           )}
 
@@ -520,7 +535,7 @@ export default function SettingsPage() {
                 className="mt-1 w-full rounded-lg border border-ng-border bg-ng-bg px-3 py-2 text-white"
                 value={routerForm.router_user || ""}
                 onChange={(e) => updateRouterField("router_user", e.target.value)}
-                placeholder="root"
+                placeholder="admin (Linksys) or root (OpenWrt)"
               />
             </label>
             <label className="block text-sm">
@@ -546,8 +561,10 @@ export default function SettingsPage() {
           </div>
 
           <p className="text-xs text-gray-500">
-            OpenWrt uses ubus login or token. Linksys/Velop uses JNAP with admin password.
-            BT/Virgin/Sky hubs usually do not support API block — Pi uses ARP network blocker instead.
+            OpenWrt uses ubus login or token. Linksys/Velop uses JNAP at{" "}
+            <code>http://192.168.1.1</code> with username <code>admin</code> and your router
+            password. Works on Windows and Pi when NetGuard can reach the router on your LAN.
+            BT/Virgin/Sky hubs usually do not support API block.
           </p>
 
           <div className="flex flex-wrap gap-3 pt-2">

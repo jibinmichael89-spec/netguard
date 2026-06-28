@@ -85,7 +85,12 @@ class RouterManager:
         self.router_type = _router_setting(db_path, "router_type")
         self.router_url = _router_setting(db_path, "router_url")
         self.router_token = _router_setting(db_path, "router_token")
-        self.router_user = _router_setting(db_path, "router_user", default="root") or "root"
+        default_user = (
+            "admin" if self.router_type in ("linksys", "velop") else "root"
+        )
+        self.router_user = (
+            _router_setting(db_path, "router_user", default=default_user) or default_user
+        )
         self.router_password = _router_setting(db_path, "router_password")
 
     def block_device(self, device_ip: str, mac_address: str | None = None) -> EnforcementResult:
@@ -104,9 +109,9 @@ class RouterManager:
             method="visibility_only",
             success=False,
             detail=(
-                "Device marked blocked in NetGuard only. Router API failed or is not "
-                "supported on this hardware. On Pi, enable netguard-network-blocker "
-                "(ARP isolation): sudo systemctl enable --now netguard-network-blocker.service"
+                "Device marked blocked in NetGuard only. Configure router enforcement "
+                "in Settings → Router (Linksys: http://192.168.1.1, user admin). "
+                "On Pi without router API, enable netguard-network-blocker for ARP isolation."
             ),
         )
 
@@ -380,7 +385,10 @@ class RouterManager:
     def router_config_summary(db_path: str | None = None) -> dict:
         router_type = _router_setting(db_path, "router_type")
         router_url = _router_setting(db_path, "router_url")
-        router_user = _router_setting(db_path, "router_user", default="root") or "root"
+        default_user = "admin" if router_type in ("linksys", "velop") else "root"
+        router_user = (
+            _router_setting(db_path, "router_user", default=default_user) or default_user
+        )
         router_password = _router_setting(db_path, "router_password")
         router_token = _router_setting(db_path, "router_token")
         env_overrides = _router_env_overrides(db_path)

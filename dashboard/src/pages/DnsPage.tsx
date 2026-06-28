@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { apiFetch } from "../api";
 import type { DnsQuery, DnsResponse } from "../types";
 import { DNS_REFRESH_MS } from "../config";
@@ -20,6 +21,52 @@ function filterQueries(queries: DnsQuery[], filter: DnsFilter): DnsQuery[] {
     return queries;
   }
   return queries.filter((query) => query.is_suspicious === 1);
+}
+
+function DeviceDnsCell({ query }: { query: DnsQuery }) {
+  const device = query.device;
+
+  if (!device) {
+    return (
+      <div className="space-y-0.5">
+        <Link
+          to={`/device/${query.source_ip}`}
+          className="font-mono text-ng-accent hover:underline"
+        >
+          {query.source_ip}
+        </Link>
+        <p className="text-xs text-gray-500">Device not in inventory yet</p>
+      </div>
+    );
+  }
+
+  const displayName = device.hostname || device.device_tag || query.source_ip;
+
+  return (
+    <div className="space-y-0.5">
+      <Link
+        to={`/device/${query.source_ip}`}
+        className="font-medium text-white hover:text-ng-accent"
+      >
+        {displayName}
+      </Link>
+      <p className="font-mono text-xs text-ng-accent">{query.source_ip}</p>
+      <p className="text-xs text-gray-400">
+        {device.mac_address}
+        {device.vendor ? ` · ${device.vendor}` : ""}
+      </p>
+      {(device.device_tag || device.device_category) && (
+        <p className="text-xs text-gray-500">
+          {[device.device_category, device.device_tag].filter(Boolean).join(" · ")}
+        </p>
+      )}
+      {(device.is_blocked ?? 0) === 1 && (
+        <span className="inline-block rounded bg-ng-alert/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ng-alert">
+          Blocked
+        </span>
+      )}
+    </div>
+  );
 }
 
 export default function DnsPage() {
@@ -127,11 +174,11 @@ export default function DnsPage() {
 
       <div className="overflow-hidden rounded-xl border border-ng-border bg-ng-card">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-left text-sm">
+          <table className="w-full min-w-[900px] text-left text-sm">
             <thead>
               <tr className="border-b border-ng-border text-xs uppercase tracking-wider text-gray-500">
                 <th className="px-4 py-3 font-medium">Time</th>
-                <th className="px-4 py-3 font-medium">Device IP</th>
+                <th className="px-4 py-3 font-medium">Device</th>
                 <th className="px-4 py-3 font-medium">Domain</th>
                 <th className="px-4 py-3 font-medium">Category</th>
               </tr>
@@ -164,8 +211,8 @@ export default function DnsPage() {
                       <td className="px-4 py-3 text-gray-400">
                         {formatTimestamp(query.timestamp)}
                       </td>
-                      <td className="px-4 py-3 font-mono text-ng-accent">
-                        {query.source_ip}
+                      <td className="px-4 py-3">
+                        <DeviceDnsCell query={query} />
                       </td>
                       <td className="px-4 py-3">
                         <span
