@@ -209,29 +209,32 @@ export default function MonitoringStatusPanel({
                   </p>
                 </div>
                 <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`h-2.5 w-2.5 rounded-full ${meta.dotClass}`}
-                      aria-hidden
-                    />
-                    <span className={`text-sm font-medium ${meta.textClass}`}>
-                      {meta.label}
-                    </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`h-2.5 w-2.5 rounded-full ${meta.dotClass}`}
+                        aria-hidden
+                      />
+                      <span className={`text-sm font-medium ${meta.textClass}`}>
+                        {meta.label}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => restartDetector(detector)}
+                      disabled={isRestarting || restartingId !== null}
+                      title={`Restart ${detector.name}`}
+                      className="flex items-center gap-1.5 rounded-lg border border-ng-accent/50 bg-ng-accent/15 px-3 py-1.5 text-xs font-semibold text-ng-accent hover:bg-ng-accent/25 disabled:opacity-50"
+                    >
+                      <RefreshCw
+                        className={`h-3.5 w-3.5 ${isRestarting ? "animate-spin" : ""}`}
+                      />
+                      {isRestarting ? "Restarting…" : "Restart"}
+                    </button>
                   </div>
                   <p className="text-xs text-gray-500">
                     {detectorActivityLine(detector)}
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => restartDetector(detector)}
-                    disabled={isRestarting || restartingId !== null}
-                    className="flex items-center gap-1.5 rounded-lg border border-ng-accent/40 bg-ng-accent/10 px-3 py-1.5 text-xs font-medium text-ng-accent hover:bg-ng-accent/20 disabled:opacity-50"
-                  >
-                    <RefreshCw
-                      className={`h-3.5 w-3.5 ${isRestarting ? "animate-spin" : ""}`}
-                    />
-                    {isRestarting ? "Restarting…" : "Restart service"}
-                  </button>
                 </div>
               </div>
             );

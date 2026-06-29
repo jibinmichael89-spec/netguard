@@ -523,6 +523,40 @@ _LINUX_PROCESS_PATTERNS: dict[str, str] = {
 }
 
 
+def _windows_subprocess_flags() -> int:
+    if sys.platform != "win32":
+        return 0
+    return getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+
+
+def _windows_running_process_names() -> set[str]:
+    """One hidden tasklist call — avoids flashing a console per detector."""
+    try:
+        result = subprocess.run(
+            ["tasklist", "/FO", "CSV", "/NH"],
+            capture_output=True,
+            text=True,
+            timeout=8,
+            check=False,
+            creationflags=_windows_subprocess_flags(),
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return set()
+
+    names: set[str] = set()
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith('"'):
+            end = line.find('"', 1)
+            if end > 1:
+                names.add(line[1:end].lower())
+                continue
+        names.add(line.split(",", 1)[0].strip().lower())
+    return names
+
+
 def _linux_process_running(detector_id: str) -> bool:
     pattern = _LINUX_PROCESS_PATTERNS.get(detector_id)
     if not pattern:
@@ -539,7 +573,11 @@ def _linux_process_running(detector_id: str) -> bool:
         return False
 
 
-def _is_detector_service_running(detector_id: str) -> bool | None:
+def _is_detector_service_running(
+    detector_id: str,
+    *,
+    windows_process_names: set[str] | None = None,
+) -> bool | None:
     """Return whether the detector process/service is running, or None if unknown."""
     entry = _DETECTOR_SERVICE_MAP.get(detector_id)
     if entry is None:
@@ -547,6 +585,8 @@ def _is_detector_service_running(detector_id: str) -> bool | None:
 
     systemd_unit, win_process = entry
     if sys.platform == "win32":
+        if windows_process_names is not None:
+            return win_process.lower() in windows_process_names
         try:
             result = subprocess.run(
                 ["tasklist", "/FI", f"IMAGENAME eq {win_process}", "/NH"],
@@ -554,6 +594,7 @@ def _is_detector_service_running(detector_id: str) -> bool | None:
                 text=True,
                 timeout=5,
                 check=False,
+                creationflags=_windows_subprocess_flags(),
             )
             return win_process.lower() in result.stdout.lower()
         except (OSError, subprocess.TimeoutExpired):
@@ -890,10 +931,16 @@ def _build_monitoring_status(conn: sqlite3.Connection) -> dict:
         "SELECT COUNT(*) FROM devices WHERE status = 'online'",
     )
     detectors: list[dict] = []
+    windows_process_names = (
+        _windows_running_process_names() if sys.platform == "win32" else None
+    )
 
     for spec in MONITORING_DETECTORS:
         last_activity = _monitoring_last_activity(conn, spec["id"])
-        service_running = _is_detector_service_running(spec["id"])
+        service_running = _is_detector_service_running(
+            spec["id"],
+            windows_process_names=windows_process_names,
+        )
         status = _detector_runtime_status(
             last_activity if isinstance(last_activity, str) else None,
             spec["stale_seconds"],

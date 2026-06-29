@@ -13,10 +13,35 @@ function Test-IsAdmin {
 
 function Write-ServiceLog {
     param([string]$Message)
-    $logDir = Join-Path $env:ProgramData "NetGuard\logs"
-    New-Item -ItemType Directory -Force -Path $logDir | Out-Null
-    $line = "{0} {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Message
-    Add-Content -Path (Join-Path $logDir "servicehost.log") -Value $line
+    try {
+        $logDir = Join-Path $env:ProgramData "NetGuard\logs"
+        New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+        $logFile = Join-Path $logDir "servicehost.log"
+        $line = "{0} {1}{2}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Message, [Environment]::NewLine
+        for ($attempt = 0; $attempt -lt 6; $attempt++) {
+            try {
+                $stream = [System.IO.File]::Open(
+                    $logFile,
+                    [System.IO.FileMode]::Append,
+                    [System.IO.FileAccess]::Write,
+                    [System.IO.FileShare]::ReadWrite
+                )
+                try {
+                    $writer = New-Object System.IO.StreamWriter($stream)
+                    $writer.Write($line)
+                    $writer.Flush()
+                    $writer.Close()
+                } finally {
+                    $stream.Close()
+                }
+                return
+            } catch {
+                Start-Sleep -Milliseconds (150 * ($attempt + 1))
+            }
+        }
+    } catch {
+        # Never block service startup because logging failed.
+    }
 }
 
 function Import-NetGuardEnv {
@@ -43,6 +68,72 @@ function Import-NetGuardEnv {
     Write-ServiceLog "Loaded env from $envFile"
 }
 
+function Initialize-NetGuardDataDir {
+    $dataDir = Join-Path $env:ProgramData "NetGuard"
+    $dbPath = Join-Path $dataDir "netguard.db"
+    $logDir = Join-Path $dataDir "logs"
+
+    New-Item -ItemType Directory -Force -Path $dataDir, $logDir | Out-Null
+    Ensure-NetGuardDataPermissions -DataDir $dataDir
+
+    # Always use writable ProgramData - never Program Files
+    $env:NETGUARD_DB_PATH = $dbPath
+    if (Test-IsAdmin) {
+        [Environment]::SetEnvironmentVariable("NETGUARD_DB_PATH", $dbPath, "Machine")
+    }
+
+    $legacyDb = Join-Path $InstallDir "netguard.db"
+    if (Test-Path $legacyDb) {
+        Write-ServiceLog "Removing legacy read-only database from install folder"
+        Remove-Item $legacyDb -Force -ErrorAction SilentlyContinue
+    }
+
+    if (Test-Path $dbPath) {
+        attrib -R $dbPath 2>$null | Out-Null
+    }
+
+    return $dbPath
+}
+
+function Ensure-NetGuardDataPermissions {
+    param([string]$DataDir)
+
+    try {
+        icacls $DataDir /grant "Users:(OI)(CI)M" /T | Out-Null
+        Write-ServiceLog "Ensured Users can write to $DataDir"
+    } catch {
+        Write-ServiceLog "WARNING: could not set data folder permissions: $($_.Exception.Message)"
+    }
+}
+
+function Test-PortInUse {
+    param([int]$Port)
+    $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if (-not $conn) { return $null }
+    return Get-Process -Id $conn.OwningProcess -ErrorAction SilentlyContinue
+}
+
+function Ensure-ApiPortAvailable {
+    $owner = Test-PortInUse -Port 8000
+    if (-not $owner) { return }
+
+    if ($owner.ProcessName -eq "NetGuard-API") {
+        Write-ServiceLog "Port 8000 already served by NetGuard-API (pid $($owner.Id))"
+        return
+    }
+
+    Write-ServiceLog "WARNING: port 8000 is in use by $($owner.ProcessName) (pid $($owner.Id))"
+    try {
+        Stop-Process -Id $owner.Id -Force -ErrorAction Stop
+        Start-Sleep -Seconds 2
+        Write-ServiceLog "Stopped $($owner.ProcessName) to free port 8000 for NetGuard-API"
+    } catch {
+        Write-ServiceLog "ERROR: could not free port 8000: $($_.Exception.Message)"
+        throw "Port 8000 is in use by $($owner.ProcessName). Stop it and retry."
+    }
+}
+
 function Start-Engine {
     param(
         [string]$BaseDir,
@@ -56,16 +147,37 @@ function Start-Engine {
     }
 
     $processName = [System.IO.Path]::GetFileNameWithoutExtension($Engine)
-    if (Get-Process -Name $processName -ErrorAction SilentlyContinue) {
-        Write-ServiceLog "ALREADY RUNNING $Engine"
-        return $true
+    $running = Get-Process -Name $processName -ErrorAction SilentlyContinue
+    if ($running) {
+        if ($Engine -eq "NetGuard-API.exe") {
+            try {
+                $health = Invoke-RestMethod -Uri "http://127.0.0.1:8000/health" -TimeoutSec 3
+                if ($health.status -eq "ok") {
+                    Write-ServiceLog "ALREADY RUNNING $Engine (healthy on port 8000)"
+                    return $true
+                }
+            } catch {
+                Write-ServiceLog "Stale $Engine process detected - restarting"
+                $running | Stop-Process -Force -ErrorAction SilentlyContinue
+                Start-Sleep -Seconds 2
+            }
+        } else {
+            Write-ServiceLog "ALREADY RUNNING $Engine (pid $($running.Id -join ','))"
+            return $true
+        }
     }
 
     try {
+        if ($Engine -eq "NetGuard-API.exe") {
+            Get-Process -Name $processName -ErrorAction SilentlyContinue |
+                Stop-Process -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 1
+        }
+
         Start-Process -FilePath $exe -WorkingDirectory $BaseDir -WindowStyle Hidden
-        Start-Sleep -Milliseconds 750
+        Start-Sleep -Milliseconds 1000
         if (Get-Process -Name $processName -ErrorAction SilentlyContinue) {
-            Write-ServiceLog "STARTED $Engine"
+            Write-ServiceLog "STARTED $Engine (db=$($env:NETGUARD_DB_PATH))"
             return $true
         }
         Write-ServiceLog "FAILED $Engine (process exited immediately)"
@@ -76,13 +188,15 @@ function Start-Engine {
     }
 }
 
-$InstallDir = (Resolve-Path $InstallDir).Path
-Import-NetGuardEnv -BaseDir $InstallDir
-
-if (-not $env:NETGUARD_DB_PATH) {
-    $env:NETGUARD_DB_PATH = Join-Path $env:ProgramData "NetGuard\netguard.db"
+$InstallDir = $InstallDir.Trim().Trim('"').TrimEnd('\')
+if (-not $InstallDir) {
+    $InstallDir = $PSScriptRoot
 }
-New-Item -ItemType Directory -Force -Path (Split-Path $env:NETGUARD_DB_PATH -Parent) | Out-Null
+$InstallDir = (Resolve-Path -LiteralPath $InstallDir).Path
+
+Import-NetGuardEnv -BaseDir $InstallDir
+$dbPath = Initialize-NetGuardDataDir
+Write-ServiceLog "Using database: $dbPath"
 
 $coreEngines = @(
     "arp-scanner.exe",
@@ -114,11 +228,25 @@ if ($CaptureOnly) {
 }
 
 Write-ServiceLog "Starting core NetGuard services from $InstallDir"
+Ensure-ApiPortAvailable
 $coreStarted = 0
+$apiStarted = $false
 foreach ($engine in $coreEngines) {
-    if (Start-Engine -BaseDir $InstallDir -Engine $engine) { $coreStarted++ }
+    if (Start-Engine -BaseDir $InstallDir -Engine $engine) {
+        $coreStarted++
+        if ($engine -eq "NetGuard-API.exe") {
+            $apiStarted = $true
+        }
+    }
 }
 Write-ServiceLog "Core services running: $coreStarted/$($coreEngines.Count)"
+
+if (-not $apiStarted) {
+    $logFile = Join-Path $env:ProgramData "NetGuard\logs\servicehost.log"
+    Write-ServiceLog "ERROR: NetGuard-API.exe did not start - dashboard will show Scanner Offline"
+    Write-Error "NetGuard-API.exe failed to start. Check $logFile"
+    exit 1
+}
 
 if (Test-IsAdmin) {
     $captureStarted = 0
@@ -128,14 +256,18 @@ if (Test-IsAdmin) {
     Write-ServiceLog "Capture services running: $captureStarted/$($captureEngines.Count)"
 } else {
     Write-ServiceLog "Requesting Administrator elevation for packet-capture engines ..."
-    $args = @(
+    $elevatedArgs = @(
         "-NoProfile",
         "-ExecutionPolicy", "Bypass",
         "-File", $PSCommandPath,
         "-InstallDir", $InstallDir,
         "-CaptureOnly"
     )
-    Start-Process -FilePath "powershell.exe" -ArgumentList $args -Verb RunAs -WindowStyle Hidden
+    try {
+        Start-Process -FilePath "powershell.exe" -ArgumentList $elevatedArgs -Verb RunAs -WindowStyle Hidden -ErrorAction Stop
+    } catch {
+        Write-ServiceLog "Capture engine elevation skipped: $($_.Exception.Message)"
+    }
 }
 
 exit 0

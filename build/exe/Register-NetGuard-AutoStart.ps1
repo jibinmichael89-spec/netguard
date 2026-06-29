@@ -13,6 +13,19 @@ $ErrorActionPreference = "Stop"
 $InstallDir = $InstallDir.TrimEnd('\')
 $DataDir = Join-Path $env:ProgramData "NetGuard"
 New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
+icacls $DataDir /grant "Users:(OI)(CI)M" /T | Out-Null
+
+$LegacyDb = Join-Path $InstallDir "netguard.db"
+if (Test-Path $LegacyDb) {
+    Remove-Item $LegacyDb -Force -ErrorAction SilentlyContinue
+}
+
+function Remove-ScheduledTaskIfExists([string]$TaskName) {
+    $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if ($null -ne $existing) {
+        Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+    }
+}
 
 $EnvFile = Join-Path $DataDir "netguard.env"
 if (-not (Test-Path $EnvFile)) {
@@ -37,10 +50,7 @@ function Read-EnvValue([string]$Key) {
 
 $ServicesScript = Join-Path $InstallDir "Start-NetGuard-Services.ps1"
 if (-not (Test-Path $ServicesScript)) {
-    $ServicesScript = Join-Path $RepoRoot "scripts\Start-NetGuard-Services.ps1"
-    if (Test-Path $ServicesScript) {
-        Copy-Item $ServicesScript (Join-Path $InstallDir "Start-NetGuard-Services.ps1") -Force
-    }
+    throw "Start-NetGuard-Services.ps1 not found in $InstallDir"
 }
 
 $HostBat = Join-Path $InstallDir "NetGuard-ServiceHost.bat"
@@ -55,7 +65,7 @@ $TaskNames = @(
     "NetGuard MSP Heartbeat"
 )
 foreach ($Name in $TaskNames) {
-    schtasks /Delete /TN $Name /F 2>$null | Out-Null
+    Remove-ScheduledTaskIfExists -TaskName $Name
 }
 
 $Principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest

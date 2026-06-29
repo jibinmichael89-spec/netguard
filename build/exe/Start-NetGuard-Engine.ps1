@@ -6,6 +6,14 @@ param(
     [string]$Engine
 )
 
+$InstallDir = $InstallDir.Trim().Trim('"').TrimEnd('\')
+if (-not $InstallDir) {
+    $InstallDir = $PSScriptRoot
+}
+if (Test-Path -LiteralPath $InstallDir) {
+    $InstallDir = (Resolve-Path -LiteralPath $InstallDir).Path
+}
+
 $exe = Join-Path $InstallDir $Engine
 if (-not (Test-Path $exe)) {
     exit 1

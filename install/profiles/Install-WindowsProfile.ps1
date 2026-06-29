@@ -36,10 +36,26 @@ Run this first (Administrator PowerShell, repo root):
 
     $DataDir = Join-Path $env:ProgramData "NetGuard"
     New-Item -ItemType Directory -Force -Path $InstallDir, $DataDir | Out-Null
+    icacls $DataDir /grant "Users:(OI)(CI)M" /T | Out-Null
 
     Write-Host "[*] Copying NetGuard executables and launchers to $InstallDir ..."
-    Get-ChildItem -Path $SourceDir -File | ForEach-Object {
+    Get-ChildItem -Path $SourceDir -File | Where-Object {
+        $_.Extension -ne ".db"
+    } | ForEach-Object {
         Copy-Item $_.FullName (Join-Path $InstallDir $_.Name) -Force
+    }
+
+    foreach ($launcher in @("START-NetGuard.bat", "NetGuard-ServiceHost.bat")) {
+        $src = Join-Path $RepoRoot "dist\$launcher"
+        if (Test-Path $src) {
+            Copy-Item $src (Join-Path $InstallDir $launcher) -Force
+        }
+    }
+
+    $LegacyDb = Join-Path $InstallDir "netguard.db"
+    if (Test-Path $LegacyDb) {
+        Write-Host "[*] Removing legacy database from install folder (use ProgramData instead) ..."
+        Remove-Item $LegacyDb -Force -ErrorAction SilentlyContinue
     }
 
     $RestartApi = Join-Path $RepoRoot "scripts\restart-api.ps1"
