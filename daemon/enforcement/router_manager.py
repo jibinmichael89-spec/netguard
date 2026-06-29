@@ -9,7 +9,6 @@ import sqlite3
 import sys
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
 
 from schema_extensions import log_device_event
 
@@ -66,11 +65,15 @@ def _router_env_overrides(db_path: str | None) -> list[str]:
     return overrides
 
 
-@dataclass
 class EnforcementResult:
-    method: str
-    success: bool
-    detail: str
+    """Outcome of a block/unblock/pause enforcement action."""
+
+    __slots__ = ("method", "success", "detail")
+
+    def __init__(self, method: str, success: bool, detail: str) -> None:
+        self.method = method
+        self.success = success
+        self.detail = detail
 
 
 class RouterManager:

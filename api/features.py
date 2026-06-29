@@ -13,11 +13,34 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel, Field
 
-_features_daemon = os.path.join(
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "daemon"))
-)
+if getattr(sys, "frozen", False):
+    _features_daemon = os.path.join(sys._MEIPASS, "daemon")
+else:
+    _features_daemon = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "daemon")
+    )
 if _features_daemon not in sys.path:
     sys.path.insert(0, _features_daemon)
+
+_enforcement_dir = os.path.join(_features_daemon, "enforcement")
+# Dev: load enforcement modules from source tree. Frozen: load from bundle files.
+if not getattr(sys, "frozen", False) and _enforcement_dir not in sys.path:
+    sys.path.append(_enforcement_dir)
+
+
+def _load_enforcement_module(module_name: str):
+    import importlib
+
+    if getattr(sys, "frozen", False):
+        return importlib.import_module(module_name)
+
+    if _enforcement_dir not in sys.path:
+        sys.path.append(_enforcement_dir)
+    return importlib.import_module(module_name)
+
+
+def _router_manager_cls():
+    return _load_enforcement_module("router_manager").RouterManager
 
 from schema_extensions import apply_schema_extensions, is_alert_suppressed, log_device_event
 
@@ -92,10 +115,7 @@ class RouterConfigUpdate(BaseModel):
 
 
 def _save_router_config(body: RouterConfigUpdate) -> list[str]:
-    enforcement_dir = os.path.join(_features_daemon, "enforcement")
-    if enforcement_dir not in sys.path:
-        sys.path.insert(0, enforcement_dir)
-    from router_manager import ROUTER_CONFIG_KEYS
+    ROUTER_CONFIG_KEYS = _load_enforcement_module("router_manager").ROUTER_CONFIG_KEYS
 
     conn = _conn()
     updated: list[str] = []
@@ -575,12 +595,7 @@ def enforce_block(device_ip: str) -> dict:
     if row is None:
         raise HTTPException(status_code=404, detail="Device not found")
 
-    enforcement_dir = os.path.join(_features_daemon, "enforcement")
-    if enforcement_dir not in sys.path:
-        sys.path.insert(0, enforcement_dir)
-    from router_manager import RouterManager
-
-    mgr = RouterManager(_DB_PATH)
+    mgr = _router_manager_cls()(_DB_PATH)
     result = mgr.block_device(device_ip, row[0])
     if not result.success:
         mgr._log_enforcement(device_ip, result)
@@ -608,12 +623,7 @@ def enforce_unblock(device_ip: str) -> dict:
     conn.commit()
     conn.close()
 
-    enforcement_dir = os.path.join(_features_daemon, "enforcement")
-    if enforcement_dir not in sys.path:
-        sys.path.insert(0, enforcement_dir)
-    from router_manager import RouterManager
-
-    result = RouterManager(_DB_PATH).unblock_device(device_ip, row[0])
+    result = _router_manager_cls()(_DB_PATH).unblock_device(device_ip, row[0])
     return {
         "success": result.success,
         "method": result.method,
@@ -632,12 +642,7 @@ def enforce_pause(device_ip: str, minutes: int = 60) -> dict:
     if row is None:
         raise HTTPException(status_code=404, detail="Device not found")
 
-    enforcement_dir = os.path.join(_features_daemon, "enforcement")
-    if enforcement_dir not in sys.path:
-        sys.path.insert(0, enforcement_dir)
-    from router_manager import RouterManager
-
-    result = RouterManager(_DB_PATH).pause_device(device_ip, row[0], minutes=minutes)
+    result = _router_manager_cls()(_DB_PATH).pause_device(device_ip, row[0], minutes=minutes)
     return {
         "success": result.success,
         "method": result.method,
@@ -647,23 +652,13 @@ def enforce_pause(device_ip: str, minutes: int = 60) -> dict:
 
 @router.get("/settings/router")
 def router_settings() -> dict:
-    enforcement_dir = os.path.join(_features_daemon, "enforcement")
-    if enforcement_dir not in sys.path:
-        sys.path.insert(0, enforcement_dir)
-    from router_manager import RouterManager
-
-    return RouterManager.router_config_summary(_DB_PATH)
+    return _router_manager_cls().router_config_summary(_DB_PATH)
 
 
 @router.put("/settings/router", dependencies=[Depends(_optional_api_key)])
 def update_router_settings(body: RouterConfigUpdate) -> dict:
     updated = _save_router_config(body)
-    enforcement_dir = os.path.join(_features_daemon, "enforcement")
-    if enforcement_dir not in sys.path:
-        sys.path.insert(0, enforcement_dir)
-    from router_manager import RouterManager
-
-    summary = RouterManager.router_config_summary(_DB_PATH)
+    summary = _router_manager_cls().router_config_summary(_DB_PATH)
     return {
         "success": True,
         "updated_keys": updated,
@@ -673,12 +668,7 @@ def update_router_settings(body: RouterConfigUpdate) -> dict:
 
 @router.post("/settings/router/test", dependencies=[Depends(_optional_api_key)])
 def test_router_connection() -> dict:
-    enforcement_dir = os.path.join(_features_daemon, "enforcement")
-    if enforcement_dir not in sys.path:
-        sys.path.insert(0, enforcement_dir)
-    from router_manager import RouterManager
-
-    mgr = RouterManager(_DB_PATH)
+    mgr = _router_manager_cls()(_DB_PATH)
     if not mgr.router_type or not mgr.router_url:
         return {
             "success": False,
@@ -687,7 +677,7 @@ def test_router_connection() -> dict:
 
     try:
         if mgr.router_type == "openwrt":
-            from openwrt_client import OpenWrtClient
+            OpenWrtClient = _load_enforcement_module("openwrt_client").OpenWrtClient
 
             client = OpenWrtClient(mgr.router_url, mgr.router_user, mgr.router_password)
             if mgr.router_token:
@@ -700,7 +690,7 @@ def test_router_connection() -> dict:
             }
 
         if mgr.router_type in ("linksys", "velop"):
-            from linksys_client import LinksysClient
+            LinksysClient = _load_enforcement_module("linksys_client").LinksysClient
 
             password = mgr.router_password or mgr.router_token
             if not password:

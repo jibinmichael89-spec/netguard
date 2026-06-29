@@ -48,8 +48,11 @@ Source: "dist\START-ARP-Spoof-Detector.bat"; DestDir: "{app}"; Flags: ignorevers
 Source: "build\windows\Register-NetGuard-AutoStart.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "build\windows\Unregister-NetGuard-AutoStart.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "scripts\restart-api.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "scripts\restart-detector.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "scripts\Start-NetGuard-Services.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "scripts\Start-NetGuard-Engine.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "scripts\Verify-NetGuard-Windows.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "scripts\Repair-NetGuard-Windows.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "install\profiles\windows-home\netguard.env"; DestDir: "{app}"; Flags: ignoreversion
 Source: "install\profiles\windows-msp\netguard.env"; DestDir: "{app}"; DestName: "netguard-msp.env.example"; Flags: ignoreversion
 Source: "dist\README.txt"; DestDir: "{app}"; Flags: ignoreversion
@@ -73,7 +76,12 @@ Type: files; Name: "{app}\netguard.db"
 procedure RegisterAutoStartTasks();
 var
   ResultCode: Integer;
+  AppDir: String;
 begin
+  AppDir := ExpandConstant('{app}');
+  if FileExists(AppDir + '\netguard.db') then
+    DeleteFile(AppDir + '\netguard.db');
+
   if not WizardIsTaskSelected('autostart') then
     Exit;
   Exec('powershell.exe',

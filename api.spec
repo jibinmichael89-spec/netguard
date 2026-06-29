@@ -5,17 +5,17 @@ block_cipher = None
 project_root = os.path.dirname(os.path.abspath(SPEC))
 vault_path = os.path.join(project_root, "daemon", "vault")
 daemon_path = os.path.join(project_root, "daemon")
+enforcement_path = os.path.join(project_root, "daemon", "enforcement")
 
 a = Analysis(
     ["api/main.py"],
-    pathex=[project_root, vault_path, daemon_path],
+    pathex=[project_root, vault_path, daemon_path, enforcement_path],
     binaries=[],
     datas=[
         ("api/static", "api/static"),
         ("daemon/data", "daemon/data"),
         ("daemon/scanner", "daemon/scanner"),
         ("daemon/detection", "daemon/detection"),
-        ("daemon/enforcement", "daemon/enforcement"),
         ("daemon/notifications", "daemon/notifications"),
         ("daemon/reports", "daemon/reports"),
     ],

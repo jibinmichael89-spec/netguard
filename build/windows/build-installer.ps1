@@ -16,6 +16,17 @@ Pop-Location
 $ExeDir = Join-Path $Root "build\exe"
 New-Item -ItemType Directory -Force -Path $ExeDir | Out-Null
 
+Write-Host "[*] Stopping running NetGuard processes (so exes can be rebuilt) ..."
+$ProcessNames = @(
+    "NetGuard-API", "arp-scanner", "risk-scorer", "policy-engine",
+    "arp-spoof-detector", "dns-monitor", "rogue-dhcp-detector",
+    "inbound-connection-detector", "threat-intel", "msp-agent"
+)
+foreach ($Name in $ProcessNames) {
+    Get-Process -Name $Name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+}
+Start-Sleep -Seconds 2
+
 Write-Host "[*] Building PyInstaller executables ..."
 Push-Location $Root
 $Specs = @(
@@ -44,9 +55,15 @@ Copy-Item (Join-Path $Root "dist\START-ARP-Spoof-Detector.bat") $ExeDir -Force
 Copy-Item (Join-Path $Root "build\windows\Register-NetGuard-AutoStart.ps1") $ExeDir -Force
 Copy-Item (Join-Path $Root "build\windows\Unregister-NetGuard-AutoStart.ps1") $ExeDir -Force
 Copy-Item (Join-Path $Root "scripts\restart-api.ps1") $ExeDir -Force
+Copy-Item (Join-Path $Root "scripts\restart-detector.ps1") $ExeDir -Force
 Copy-Item (Join-Path $Root "scripts\Start-NetGuard-Services.ps1") $ExeDir -Force
 Copy-Item (Join-Path $Root "scripts\Start-NetGuard-Engine.ps1") $ExeDir -Force
+Copy-Item (Join-Path $Root "scripts\Verify-NetGuard-Windows.ps1") $ExeDir -Force
+Copy-Item (Join-Path $Root "scripts\Repair-NetGuard-Windows.ps1") $ExeDir -Force
 Copy-Item (Join-Path $Root "install\profiles\windows-home\netguard.env") $ExeDir -Force
+
+# Never ship a database inside the install folder
+Get-ChildItem -Path $ExeDir -Filter "*.db" -File -ErrorAction SilentlyContinue | Remove-Item -Force
 
 $Iscc = @(
     "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",

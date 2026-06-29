@@ -5,9 +5,33 @@ import sqlite3
 import sys
 
 
+def _windows_programdata_db_path() -> str:
+    program_data = os.environ.get("ProgramData", r"C:\ProgramData")
+    return os.path.join(program_data, "NetGuard", "netguard.db")
+
+
 def _windows_appdata_db_path() -> str:
     local_app_data = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
     return os.path.join(local_app_data, "NetGuard", "netguard.db")
+
+
+def _windows_writable_db_path() -> str:
+    """Default writable database location for installed Windows builds."""
+    return _windows_programdata_db_path()
+
+
+def _is_under_program_files(path: str) -> bool:
+    if sys.platform != "win32":
+        return False
+    normalized = os.path.abspath(path).lower()
+    for root in (
+        os.environ.get("ProgramFiles", r"C:\Program Files"),
+        os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+    ):
+        root_norm = os.path.abspath(root).lower().rstrip("\\")
+        if normalized == root_norm or normalized.startswith(root_norm + os.sep):
+            return True
+    return False
 
 
 def ensure_db_directory(db_path: str) -> None:
@@ -54,17 +78,25 @@ def resolve_db_path(project_root: str | None = None) -> str:
     """
     Locate netguard.db.
 
-    When installed under Program Files, defaults to a writable path in
-    %LOCALAPPDATA%\\NetGuard\\ on Windows.
+    Installed Windows builds must not use Program Files (read-only). Prefer
+    NETGUARD_DB_PATH, then %ProgramData%\\NetGuard\\netguard.db.
     """
     load_netguard_env()
     env_path = os.environ.get("NETGUARD_DB_PATH", "").strip()
     if env_path:
-        return env_path
+        return os.path.abspath(env_path)
 
     candidates: list[str] = []
 
     if getattr(sys, "frozen", False):
+        if sys.platform == "win32":
+            candidates.extend(
+                [
+                    _windows_programdata_db_path(),
+                    _windows_appdata_db_path(),
+                ]
+            )
+
         exe_dir = os.path.dirname(os.path.abspath(sys.executable))
         candidates.append(os.path.join(exe_dir, "netguard.db"))
         candidates.append(os.path.join(os.getcwd(), "netguard.db"))
@@ -76,9 +108,6 @@ def resolve_db_path(project_root: str | None = None) -> str:
             if parent == search_dir:
                 break
             search_dir = parent
-
-        if sys.platform == "win32":
-            candidates.append(_windows_appdata_db_path())
     else:
         root = project_root or os.path.abspath(
             os.path.join(os.path.dirname(__file__), "..")
@@ -91,12 +120,15 @@ def resolve_db_path(project_root: str | None = None) -> str:
         if normalized in seen:
             continue
         seen.add(normalized)
-        if os.path.exists(normalized):
-            return normalized
+        if not os.path.exists(normalized):
+            continue
+        if _is_under_program_files(normalized):
+            continue
+        return normalized
 
     if getattr(sys, "frozen", False):
         if sys.platform == "win32":
-            return _windows_appdata_db_path()
+            return _windows_writable_db_path()
         return os.path.join(os.path.dirname(os.path.abspath(sys.executable)), "netguard.db")
 
     root = project_root or os.path.abspath(

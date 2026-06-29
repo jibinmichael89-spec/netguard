@@ -52,29 +52,50 @@ export default function SettingsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     setError(undefined);
-    try {
-      const [notif, intel, policyData, router] = await Promise.all([
-        apiFetch<NotificationConfigResponse>("/notifications/config"),
-        apiFetch<ThreatIntelStatusResponse>("/threat-intel/status"),
-        apiFetch<PoliciesResponse>("/policies"),
-        apiFetch<RouterSettingsResponse>("/settings/router"),
-      ]);
-      setNotifConfig(notif.config);
-      setThreatIntel(intel);
-      setPolicies(policyData.policies);
-      setRouterSettings(router);
-      setRouterForm({
-        router_type: router.router_type || "",
-        router_url: router.router_url || "",
-        router_user: router.router_user || "admin",
-        router_password: router.router_password || "",
-        router_token: router.router_token || "",
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load settings");
-    } finally {
-      setLoading(false);
+    const errors: string[] = [];
+
+    const [notif, intel, policyData, router] = await Promise.allSettled([
+      apiFetch<NotificationConfigResponse>("/notifications/config"),
+      apiFetch<ThreatIntelStatusResponse>("/threat-intel/status"),
+      apiFetch<PoliciesResponse>("/policies"),
+      apiFetch<RouterSettingsResponse>("/settings/router"),
+    ]);
+
+    if (notif.status === "fulfilled") {
+      setNotifConfig(notif.value.config);
+    } else {
+      errors.push("Notifications");
     }
+
+    if (intel.status === "fulfilled") {
+      setThreatIntel(intel.value);
+    } else {
+      errors.push("Threat intel");
+    }
+
+    if (policyData.status === "fulfilled") {
+      setPolicies(policyData.value.policies);
+    } else {
+      errors.push("Policies");
+    }
+
+    if (router.status === "fulfilled") {
+      setRouterSettings(router.value);
+      setRouterForm({
+        router_type: router.value.router_type || "",
+        router_url: router.value.router_url || "",
+        router_user: router.value.router_user || "admin",
+        router_password: router.value.router_password || "",
+        router_token: router.value.router_token || "",
+      });
+    } else {
+      errors.push("Router");
+    }
+
+    if (errors.length > 0) {
+      setError(`Could not load: ${errors.join(", ")}`);
+    }
+    setLoading(false);
   }, []);
 
   useEffect(() => {
