@@ -94,6 +94,11 @@ Run this first (Administrator PowerShell, repo root):
     $Unregister = Join-Path $RepoRoot "build\windows\Unregister-NetGuard-AutoStart.ps1"
     Copy-Item $Unregister (Join-Path $InstallDir "Unregister-NetGuard-AutoStart.ps1") -Force
 
+    $InstallNpcap = Join-Path $RepoRoot "build\windows\Install-Npcap.ps1"
+    if (Test-Path $InstallNpcap) {
+        Copy-Item $InstallNpcap (Join-Path $InstallDir "Install-Npcap.ps1") -Force
+    }
+
     $ProfileEnv = Join-Path $ProfileDir "netguard.env"
     Copy-Item $ProfileEnv (Join-Path $DataDir "netguard.env") -Force
     Copy-Item $ProfileEnv (Join-Path $InstallDir "netguard.env") -Force

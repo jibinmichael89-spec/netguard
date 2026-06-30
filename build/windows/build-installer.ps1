@@ -60,10 +60,19 @@ Copy-Item (Join-Path $Root "scripts\Start-NetGuard-Services.ps1") $ExeDir -Force
 Copy-Item (Join-Path $Root "scripts\Start-NetGuard-Engine.ps1") $ExeDir -Force
 Copy-Item (Join-Path $Root "scripts\Verify-NetGuard-Windows.ps1") $ExeDir -Force
 Copy-Item (Join-Path $Root "scripts\Repair-NetGuard-Windows.ps1") $ExeDir -Force
+Copy-Item (Join-Path $Root "build\windows\Install-Npcap.ps1") $ExeDir -Force
 Copy-Item (Join-Path $Root "install\profiles\windows-home\netguard.env") $ExeDir -Force
+
+Write-Host "[*] Ensuring Npcap installer is bundled ..."
+& (Join-Path $Root "build\windows\ensure-npcap-prereq.ps1") -RepoRoot $Root
 
 # Never ship a database inside the install folder
 Get-ChildItem -Path $ExeDir -Filter "*.db" -File -ErrorAction SilentlyContinue | Remove-Item -Force
+
+if (-not (Test-Path (Join-Path $Root "build\prerequisites\npcap-installer.exe")) -and
+    -not (Test-Path (Join-Path $Root "build\prerequisites\npcap-oem.exe"))) {
+    Write-Warning "[!] No Npcap installer in build\prerequisites - NetGuard-Setup.exe will not bundle packet capture"
+}
 
 $Iscc = @(
     "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",

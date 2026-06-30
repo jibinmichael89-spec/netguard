@@ -9,4 +9,5 @@ venv/
 .vscode/
 Thumbs.db
 vault_request.json
+build/prerequisites/npcap*.exe
 build/installer/NetGuard-Setup.exe

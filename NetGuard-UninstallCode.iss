@@ -32,6 +32,8 @@ var
 begin
   Exec('schtasks.exe', '/Delete /TN "NetGuard Services" /F', '', SW_HIDE,
     ewWaitUntilTerminated, ResultCode);
+  Exec('schtasks.exe', '/Delete /TN "NetGuard Capture Engines" /F', '', SW_HIDE,
+    ewWaitUntilTerminated, ResultCode);
   Exec('schtasks.exe', '/Delete /TN "NetGuard Threat Intel" /F', '', SW_HIDE,
     ewWaitUntilTerminated, ResultCode);
   Exec('schtasks.exe', '/Delete /TN "NetGuard MSP Heartbeat" /F', '', SW_HIDE,
