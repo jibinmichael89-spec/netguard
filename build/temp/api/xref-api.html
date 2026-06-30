@@ -24,7 +24,15 @@ imports:
  &#8226;   <a href="#codecs">codecs</a>
  &#8226;   <a href="#collections">collections</a>
  &#8226;   <a href="#copyreg">copyreg</a>
+ &#8226;   <a href="#cryptography">cryptography</a>
+ &#8226;   <a href="#cryptography.fernet">cryptography.fernet</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives.hashes">cryptography.hazmat.primitives.hashes</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives.kdf.pbkdf2">cryptography.hazmat.primitives.kdf.pbkdf2</a>
+ &#8226;   <a href="#ctypes">ctypes</a>
+ &#8226;   <a href="#ctypes.wintypes">ctypes.wintypes</a>
+ &#8226;   <a href="#database">database</a>
  &#8226;   <a href="#datetime">datetime</a>
+ &#8226;   <a href="#db_path">db_path</a>
  &#8226;   <a href="#encodings">encodings</a>
  &#8226;   <a href="#encodings._win_cp_codecs">encodings._win_cp_codecs</a>
  &#8226;   <a href="#encodings.aliases">encodings.aliases</a>
@@ -153,6 +161,7 @@ imports:
  &#8226;   <a href="#fastapi.middleware.cors">fastapi.middleware.cors</a>
  &#8226;   <a href="#fastapi.responses">fastapi.responses</a>
  &#8226;   <a href="#fastapi.staticfiles">fastapi.staticfiles</a>
+ &#8226;   <a href="#features">features</a>
  &#8226;   <a href="#functools">functools</a>
  &#8226;   <a href="#genericpath">genericpath</a>
  &#8226;   <a href="#heapq">heapq</a>
@@ -160,8 +169,11 @@ imports:
  &#8226;   <a href="#json">json</a>
  &#8226;   <a href="#keyword">keyword</a>
  &#8226;   <a href="#linecache">linecache</a>
+ &#8226;   <a href="#linksys_client">linksys_client</a>
  &#8226;   <a href="#locale">locale</a>
+ &#8226;   <a href="#msp">msp</a>
  &#8226;   <a href="#ntpath">ntpath</a>
+ &#8226;   <a href="#openwrt_client">openwrt_client</a>
  &#8226;   <a href="#operator">operator</a>
  &#8226;   <a href="#os">os</a>
  &#8226;   <a href="#password_vault">password_vault</a>
@@ -180,17 +192,31 @@ imports:
  &#8226;   <a href="#re._parser">re._parser</a>
  &#8226;   <a href="#reprlib">reprlib</a>
  &#8226;   <a href="#requests">requests</a>
+ &#8226;   <a href="#router_manager">router_manager</a>
  &#8226;   <a href="#scapy">scapy</a>
+ &#8226;   <a href="#schema_extensions">schema_extensions</a>
  &#8226;   <a href="#socket">socket</a>
  &#8226;   <a href="#sqlite3">sqlite3</a>
  &#8226;   <a href="#sre_compile">sre_compile</a>
  &#8226;   <a href="#sre_constants">sre_constants</a>
  &#8226;   <a href="#sre_parse">sre_parse</a>
  &#8226;   <a href="#stat">stat</a>
+ &#8226;   <a href="#subprocess">subprocess</a>
  &#8226;   <a href="#sys">sys</a>
+ &#8226;   <a href="#time">time</a>
  &#8226;   <a href="#traceback">traceback</a>
  &#8226;   <a href="#types">types</a>
  &#8226;   <a href="#uvicorn">uvicorn</a>
+ &#8226;   <a href="#uvicorn.lifespan">uvicorn.lifespan</a>
+ &#8226;   <a href="#uvicorn.lifespan.on">uvicorn.lifespan.on</a>
+ &#8226;   <a href="#uvicorn.logging">uvicorn.logging</a>
+ &#8226;   <a href="#uvicorn.loops">uvicorn.loops</a>
+ &#8226;   <a href="#uvicorn.loops.auto">uvicorn.loops.auto</a>
+ &#8226;   <a href="#uvicorn.protocols">uvicorn.protocols</a>
+ &#8226;   <a href="#uvicorn.protocols.http">uvicorn.protocols.http</a>
+ &#8226;   <a href="#uvicorn.protocols.http.auto">uvicorn.protocols.http.auto</a>
+ &#8226;   <a href="#uvicorn.protocols.websockets">uvicorn.protocols.websockets</a>
+ &#8226;   <a href="#uvicorn.protocols.websockets.auto">uvicorn.protocols.websockets.auto</a>
  &#8226;   <a href="#warnings">warnings</a>
  &#8226;   <a href="#weakref">weakref</a>
 
@@ -378,6 +404,7 @@ imported by:
  &#8226;   <a href="#click.types">click.types</a>
  &#8226;   <a href="#click.utils">click.utils</a>
  &#8226;   <a href="#configparser">configparser</a>
+ &#8226;   <a href="#cryptography.fernet">cryptography.fernet</a>
  &#8226;   <a href="#cryptography.hazmat.bindings.openssl.binding">cryptography.hazmat.bindings.openssl.binding</a>
  &#8226;   <a href="#cryptography.utils">cryptography.utils</a>
  &#8226;   <a href="#cryptography.x509.base">cryptography.x509.base</a>
@@ -1171,6 +1198,7 @@ imported by:
  &#8226;   <a href="#cryptography">cryptography</a>
  &#8226;   <a href="#cryptography.__about__">cryptography.__about__</a>
  &#8226;   <a href="#cryptography.exceptions">cryptography.exceptions</a>
+ &#8226;   <a href="#cryptography.fernet">cryptography.fernet</a>
  &#8226;   <a href="#cryptography.hazmat">cryptography.hazmat</a>
  &#8226;   <a href="#cryptography.hazmat._oid">cryptography.hazmat._oid</a>
  &#8226;   <a href="#cryptography.hazmat.backends">cryptography.hazmat.backends</a>
@@ -1209,6 +1237,8 @@ imported by:
  &#8226;   <a href="#cryptography.hazmat.primitives.hmac">cryptography.hazmat.primitives.hmac</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.kdf">cryptography.hazmat.primitives.kdf</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.kdf.hkdf">cryptography.hazmat.primitives.kdf.hkdf</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives.kdf.pbkdf2">cryptography.hazmat.primitives.kdf.pbkdf2</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives.padding">cryptography.hazmat.primitives.padding</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.serialization">cryptography.hazmat.primitives.serialization</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.serialization.ssh">cryptography.hazmat.primitives.serialization.ssh</a>
  &#8226;   <a href="#cryptography.utils">cryptography.utils</a>
@@ -1220,9 +1250,16 @@ imported by:
  &#8226;   <a href="#cryptography.x509.name">cryptography.x509.name</a>
  &#8226;   <a href="#cryptography.x509.oid">cryptography.x509.oid</a>
  &#8226;   <a href="#cryptography.x509.verification">cryptography.x509.verification</a>
+ &#8226;   <a href="#detection.policy_engine">detection.policy_engine</a>
+ &#8226;   <a href="#detection.threat_intel">detection.threat_intel</a>
+ &#8226;   <a href="#dns_blocker">dns_blocker</a>
+ &#8226;   <a href="#features">features</a>
  &#8226;   <a href="#importlib.metadata">importlib.metadata</a>
  &#8226;   <a href="#importlib.metadata._meta">importlib.metadata._meta</a>
  &#8226;   <a href="#importlib.resources.readers">importlib.resources.readers</a>
+ &#8226;   <a href="#linksys_client">linksys_client</a>
+ &#8226;   <a href="#msp">msp</a>
+ &#8226;   <a href="#openwrt_client">openwrt_client</a>
  &#8226;   <a href="#packaging._elffile">packaging._elffile</a>
  &#8226;   <a href="#packaging._manylinux">packaging._manylinux</a>
  &#8226;   <a href="#packaging._musllinux">packaging._musllinux</a>
@@ -1306,6 +1343,8 @@ imported by:
  &#8226;   <a href="#requests.sessions">requests.sessions</a>
  &#8226;   <a href="#requests.structures">requests.structures</a>
  &#8226;   <a href="#requests.utils">requests.utils</a>
+ &#8226;   <a href="#router_manager">router_manager</a>
+ &#8226;   <a href="#schema_extensions">schema_extensions</a>
  &#8226;   <a href="#setuptools">setuptools</a>
  &#8226;   <a href="#setuptools._core_metadata">setuptools._core_metadata</a>
  &#8226;   <a href="#setuptools._distutils._modified">setuptools._distutils._modified</a>
@@ -3447,6 +3486,7 @@ imported by:
  &#8226;   <a href="#cryptography.hazmat.primitives.ciphers.base">cryptography.hazmat.primitives.ciphers.base</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.hashes">cryptography.hazmat.primitives.hashes</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.kdf">cryptography.hazmat.primitives.kdf</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives.padding">cryptography.hazmat.primitives.padding</a>
  &#8226;   <a href="#cryptography.x509.extensions">cryptography.x509.extensions</a>
  &#8226;   <a href="#cryptography.x509.general_name">cryptography.x509.general_name</a>
  &#8226;   <a href="#dataclasses">dataclasses</a>
@@ -5840,7 +5880,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#cryptography.hazmat.primitives.serialization.ssh">cryptography.hazmat.primitives.serialization.ssh</a>
+    <a href="#cryptography.fernet">cryptography.fernet</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives.serialization.ssh">cryptography.hazmat.primitives.serialization.ssh</a>
  &#8226;   <a href="#email._encoded_words">email._encoded_words</a>
  &#8226;   <a href="#email.base64mime">email.base64mime</a>
  &#8226;   <a href="#email.encoders">email.encoders</a>
@@ -5849,6 +5890,7 @@ imported by:
  &#8226;   <a href="#http.server">http.server</a>
  &#8226;   <a href="#logging.handlers">logging.handlers</a>
  &#8226;   <a href="#multiprocessing.resource_tracker">multiprocessing.resource_tracker</a>
+ &#8226;   <a href="#password_vault">password_vault</a>
  &#8226;   <a href="#pydantic.types">pydantic.types</a>
  &#8226;   <a href="#requests.auth">requests.auth</a>
  &#8226;   <a href="#scapy.compat">scapy.compat</a>
@@ -5891,6 +5933,7 @@ imported by:
   <tt>binascii</tt> <span class="moduletype"><i>(builtin module)</i></span>  <div class="import">
 imported by:
     <a href="#base64">base64</a>
+ &#8226;   <a href="#cryptography.fernet">cryptography.fernet</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.serialization.ssh">cryptography.hazmat.primitives.serialization.ssh</a>
  &#8226;   <a href="#cryptography.x509.name">cryptography.x509.name</a>
  &#8226;   <a href="#email._encoded_words">email._encoded_words</a>
@@ -7924,6 +7967,7 @@ imports:
  &#8226;   <a href="#cryptography.hazmat.bindings.openssl">cryptography.hazmat.bindings.openssl</a>
  &#8226;   <a href="#cryptography.hazmat.bindings.openssl._conditional">cryptography.hazmat.bindings.openssl._conditional</a>
  &#8226;   <a href="#cryptography.hazmat.bindings.openssl.binding">cryptography.hazmat.bindings.openssl.binding</a>
+ &#8226;   <a href="#cryptography.utils">cryptography.utils</a>
  &#8226;   <a href="#cryptography.x509">cryptography.x509</a>
 
   </div>
@@ -7931,6 +7975,7 @@ imports:
 imported by:
     <a href="#cryptography.__about__">cryptography.__about__</a>
  &#8226;   <a href="#cryptography.exceptions">cryptography.exceptions</a>
+ &#8226;   <a href="#cryptography.fernet">cryptography.fernet</a>
  &#8226;   <a href="#cryptography.hazmat">cryptography.hazmat</a>
  &#8226;   <a href="#cryptography.hazmat.bindings.openssl.binding">cryptography.hazmat.bindings.openssl.binding</a>
  &#8226;   <a href="#cryptography.hazmat.decrepit.ciphers.algorithms">cryptography.hazmat.decrepit.ciphers.algorithms</a>
@@ -7941,6 +7986,7 @@ imported by:
  &#8226;   <a href="#cryptography.hazmat.primitives.asymmetric.ec">cryptography.hazmat.primitives.asymmetric.ec</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.ciphers.algorithms">cryptography.hazmat.primitives.ciphers.algorithms</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.ciphers.modes">cryptography.hazmat.primitives.ciphers.modes</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives.padding">cryptography.hazmat.primitives.padding</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.serialization.ssh">cryptography.hazmat.primitives.serialization.ssh</a>
  &#8226;   <a href="#cryptography.utils">cryptography.utils</a>
  &#8226;   <a href="#cryptography.x509">cryptography.x509</a>
@@ -7948,6 +7994,7 @@ imported by:
  &#8226;   <a href="#cryptography.x509.certificate_transparency">cryptography.x509.certificate_transparency</a>
  &#8226;   <a href="#cryptography.x509.extensions">cryptography.x509.extensions</a>
  &#8226;   <a href="#cryptography.x509.name">cryptography.x509.name</a>
+ &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#requests">requests</a>
  &#8226;   <a href="#scapy.config">scapy.config</a>
  &#8226;   <a href="#urllib3.contrib.pyopenssl">urllib3.contrib.pyopenssl</a>
@@ -7986,7 +8033,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#cryptography.hazmat.bindings.openssl.binding">cryptography.hazmat.bindings.openssl.binding</a>
+    <a href="#cryptography.fernet">cryptography.fernet</a>
+ &#8226;   <a href="#cryptography.hazmat.bindings.openssl.binding">cryptography.hazmat.bindings.openssl.binding</a>
  &#8226;   <a href="#cryptography.hazmat.primitives._modes">cryptography.hazmat.primitives._modes</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.asymmetric.ec">cryptography.hazmat.primitives.asymmetric.ec</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.asymmetric.ed448">cryptography.hazmat.primitives.asymmetric.ed448</a>
@@ -7999,6 +8047,39 @@ imported by:
  &#8226;   <a href="#scapy.layers.tls.cert">scapy.layers.tls.cert</a>
  &#8226;   <a href="#scapy.layers.tls.crypto.cipher_aead">scapy.layers.tls.crypto.cipher_aead</a>
  &#8226;   <a href="#scapy.layers.tls.crypto.pkcs1">scapy.layers.tls.crypto.pkcs1</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="cryptography.fernet"></a>
+  <a target="code" href="///C:/Users/jibin/AppData/Roaming/Python/Python314/site-packages/cryptography/fernet.py" type="text/plain"><tt>cryptography.fernet</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#'collections.abc'">'collections.abc'</a>
+ &#8226;   <a href="#__future__">__future__</a>
+ &#8226;   <a href="#base64">base64</a>
+ &#8226;   <a href="#binascii">binascii</a>
+ &#8226;   <a href="#cryptography">cryptography</a>
+ &#8226;   <a href="#cryptography.exceptions">cryptography.exceptions</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives">cryptography.hazmat.primitives</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives.ciphers">cryptography.hazmat.primitives.ciphers</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives.ciphers.algorithms">cryptography.hazmat.primitives.ciphers.algorithms</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives.ciphers.modes">cryptography.hazmat.primitives.ciphers.modes</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives.hashes">cryptography.hazmat.primitives.hashes</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives.hmac">cryptography.hazmat.primitives.hmac</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives.padding">cryptography.hazmat.primitives.padding</a>
+ &#8226;   <a href="#cryptography.utils">cryptography.utils</a>
+ &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#time">time</a>
+ &#8226;   <a href="#typing">typing</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#password_vault">password_vault</a>
 
   </div>
 
@@ -8180,6 +8261,8 @@ imported by:
  &#8226;   <a href="#cryptography.hazmat.primitives.hashes">cryptography.hazmat.primitives.hashes</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.hmac">cryptography.hazmat.primitives.hmac</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.kdf.hkdf">cryptography.hazmat.primitives.kdf.hkdf</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives.kdf.pbkdf2">cryptography.hazmat.primitives.kdf.pbkdf2</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives.padding">cryptography.hazmat.primitives.padding</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.serialization.base">cryptography.hazmat.primitives.serialization.base</a>
  &#8226;   <a href="#cryptography.x509.base">cryptography.x509.base</a>
  &#8226;   <a href="#cryptography.x509.certificate_transparency">cryptography.x509.certificate_transparency</a>
@@ -8345,12 +8428,14 @@ imports:
  &#8226;   <a href="#cryptography.hazmat.primitives._serialization">cryptography.hazmat.primitives._serialization</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.constant_time">cryptography.hazmat.primitives.constant_time</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.hashes">cryptography.hazmat.primitives.hashes</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives.padding">cryptography.hazmat.primitives.padding</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.serialization">cryptography.hazmat.primitives.serialization</a>
 
   </div>
   <div class="import">
 imported by:
-    <a href="#cryptography.hazmat._oid">cryptography.hazmat._oid</a>
+    <a href="#cryptography.fernet">cryptography.fernet</a>
+ &#8226;   <a href="#cryptography.hazmat._oid">cryptography.hazmat._oid</a>
  &#8226;   <a href="#cryptography.hazmat.backends.openssl.backend">cryptography.hazmat.backends.openssl.backend</a>
  &#8226;   <a href="#cryptography.hazmat.primitives._asymmetric">cryptography.hazmat.primitives._asymmetric</a>
  &#8226;   <a href="#cryptography.hazmat.primitives._cipheralgorithm">cryptography.hazmat.primitives._cipheralgorithm</a>
@@ -8374,10 +8459,12 @@ imported by:
  &#8226;   <a href="#cryptography.hazmat.primitives.hashes">cryptography.hazmat.primitives.hashes</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.hmac">cryptography.hazmat.primitives.hmac</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.kdf">cryptography.hazmat.primitives.kdf</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives.padding">cryptography.hazmat.primitives.padding</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.serialization">cryptography.hazmat.primitives.serialization</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.serialization.ssh">cryptography.hazmat.primitives.serialization.ssh</a>
  &#8226;   <a href="#cryptography.x509.base">cryptography.x509.base</a>
  &#8226;   <a href="#cryptography.x509.extensions">cryptography.x509.extensions</a>
+ &#8226;   <a href="#password_vault">password_vault</a>
  &#8226;   <a href="#scapy.layers.tls.cert">scapy.layers.tls.cert</a>
  &#8226;   <a href="#scapy.layers.tls.crypto.groups">scapy.layers.tls.crypto.groups</a>
  &#8226;   <a href="#scapy.layers.tls.crypto.pkcs1">scapy.layers.tls.crypto.pkcs1</a>
@@ -8915,7 +9002,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#cryptography.hazmat.backends.openssl.backend">cryptography.hazmat.backends.openssl.backend</a>
+    <a href="#cryptography.fernet">cryptography.fernet</a>
+ &#8226;   <a href="#cryptography.hazmat.backends.openssl.backend">cryptography.hazmat.backends.openssl.backend</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.ciphers.aead">cryptography.hazmat.primitives.ciphers.aead</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.ciphers.algorithms">cryptography.hazmat.primitives.ciphers.algorithms</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.ciphers.base">cryptography.hazmat.primitives.ciphers.base</a>
@@ -8962,7 +9050,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#cryptography.hazmat.backends.openssl.backend">cryptography.hazmat.backends.openssl.backend</a>
+    <a href="#cryptography.fernet">cryptography.fernet</a>
+ &#8226;   <a href="#cryptography.hazmat.backends.openssl.backend">cryptography.hazmat.backends.openssl.backend</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.ciphers">cryptography.hazmat.primitives.ciphers</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.ciphers.modes">cryptography.hazmat.primitives.ciphers.modes</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.serialization.ssh">cryptography.hazmat.primitives.serialization.ssh</a>
@@ -9015,7 +9104,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#cryptography.hazmat.backends.openssl.backend">cryptography.hazmat.backends.openssl.backend</a>
+    <a href="#cryptography.fernet">cryptography.fernet</a>
+ &#8226;   <a href="#cryptography.hazmat.backends.openssl.backend">cryptography.hazmat.backends.openssl.backend</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.ciphers">cryptography.hazmat.primitives.ciphers</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.ciphers.base">cryptography.hazmat.primitives.ciphers.base</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.serialization.ssh">cryptography.hazmat.primitives.serialization.ssh</a>
@@ -9059,7 +9149,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#cryptography.hazmat._oid">cryptography.hazmat._oid</a>
+    <a href="#cryptography.fernet">cryptography.fernet</a>
+ &#8226;   <a href="#cryptography.hazmat._oid">cryptography.hazmat._oid</a>
  &#8226;   <a href="#cryptography.hazmat.backends.openssl.backend">cryptography.hazmat.backends.openssl.backend</a>
  &#8226;   <a href="#cryptography.hazmat.primitives">cryptography.hazmat.primitives</a>
  &#8226;   <a href="#cryptography.hazmat.primitives._serialization">cryptography.hazmat.primitives._serialization</a>
@@ -9071,6 +9162,8 @@ imported by:
  &#8226;   <a href="#cryptography.hazmat.primitives.hmac">cryptography.hazmat.primitives.hmac</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.serialization.ssh">cryptography.hazmat.primitives.serialization.ssh</a>
  &#8226;   <a href="#cryptography.x509.base">cryptography.x509.base</a>
+ &#8226;   <a href="#main.py">main.py</a>
+ &#8226;   <a href="#password_vault">password_vault</a>
  &#8226;   <a href="#scapy.layers.tls.cert">scapy.layers.tls.cert</a>
  &#8226;   <a href="#scapy.layers.tls.crypto.hkdf">scapy.layers.tls.crypto.hkdf</a>
  &#8226;   <a href="#scapy.layers.tls.crypto.pkcs1">scapy.layers.tls.crypto.pkcs1</a>
@@ -9093,7 +9186,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#scapy.layers.tls.crypto.hkdf">scapy.layers.tls.crypto.hkdf</a>
+    <a href="#cryptography.fernet">cryptography.fernet</a>
+ &#8226;   <a href="#scapy.layers.tls.crypto.hkdf">scapy.layers.tls.crypto.hkdf</a>
 
   </div>
 
@@ -9113,6 +9207,7 @@ imports:
   <div class="import">
 imported by:
     <a href="#cryptography.hazmat.primitives.kdf.hkdf">cryptography.hazmat.primitives.kdf.hkdf</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives.kdf.pbkdf2">cryptography.hazmat.primitives.kdf.pbkdf2</a>
 
   </div>
 
@@ -9131,6 +9226,47 @@ imports:
   <div class="import">
 imported by:
     <a href="#scapy.layers.tls.crypto.hkdf">scapy.layers.tls.crypto.hkdf</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="cryptography.hazmat.primitives.kdf.pbkdf2"></a>
+  <a target="code" href="///C:/Users/jibin/AppData/Roaming/Python/Python314/site-packages/cryptography/hazmat/primitives/kdf/pbkdf2.py" type="text/plain"><tt>cryptography.hazmat.primitives.kdf.pbkdf2</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#__future__">__future__</a>
+ &#8226;   <a href="#cryptography.hazmat.bindings._rust">cryptography.hazmat.bindings._rust</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives.kdf">cryptography.hazmat.primitives.kdf</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#password_vault">password_vault</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="cryptography.hazmat.primitives.padding"></a>
+  <a target="code" href="///C:/Users/jibin/AppData/Roaming/Python/Python314/site-packages/cryptography/hazmat/primitives/padding.py" type="text/plain"><tt>cryptography.hazmat.primitives.padding</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#__future__">__future__</a>
+ &#8226;   <a href="#abc">abc</a>
+ &#8226;   <a href="#cryptography">cryptography</a>
+ &#8226;   <a href="#cryptography.hazmat.bindings._rust">cryptography.hazmat.bindings._rust</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives">cryptography.hazmat.primitives</a>
+ &#8226;   <a href="#cryptography.utils">cryptography.utils</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#cryptography.fernet">cryptography.fernet</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives">cryptography.hazmat.primitives</a>
 
   </div>
 
@@ -9237,7 +9373,9 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#cryptography.hazmat.decrepit.ciphers.algorithms">cryptography.hazmat.decrepit.ciphers.algorithms</a>
+    <a href="#cryptography">cryptography</a>
+ &#8226;   <a href="#cryptography.fernet">cryptography.fernet</a>
+ &#8226;   <a href="#cryptography.hazmat.decrepit.ciphers.algorithms">cryptography.hazmat.decrepit.ciphers.algorithms</a>
  &#8226;   <a href="#cryptography.hazmat.decrepit.ciphers.modes">cryptography.hazmat.decrepit.ciphers.modes</a>
  &#8226;   <a href="#cryptography.hazmat.primitives._cipheralgorithm">cryptography.hazmat.primitives._cipheralgorithm</a>
  &#8226;   <a href="#cryptography.hazmat.primitives._modes">cryptography.hazmat.primitives._modes</a>
@@ -9255,6 +9393,7 @@ imported by:
  &#8226;   <a href="#cryptography.hazmat.primitives.ciphers.modes">cryptography.hazmat.primitives.ciphers.modes</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.hashes">cryptography.hazmat.primitives.hashes</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.kdf">cryptography.hazmat.primitives.kdf</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives.padding">cryptography.hazmat.primitives.padding</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.serialization.ssh">cryptography.hazmat.primitives.serialization.ssh</a>
  &#8226;   <a href="#cryptography.x509.base">cryptography.x509.base</a>
  &#8226;   <a href="#cryptography.x509.certificate_transparency">cryptography.x509.certificate_transparency</a>
@@ -9557,6 +9696,7 @@ imported by:
  &#8226;   <a href="#ctypes.macholib">ctypes.macholib</a>
  &#8226;   <a href="#ctypes.util">ctypes.util</a>
  &#8226;   <a href="#ctypes.wintypes">ctypes.wintypes</a>
+ &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#multiprocessing.sharedctypes">multiprocessing.sharedctypes</a>
  &#8226;   <a href="#packaging._manylinux">packaging._manylinux</a>
  &#8226;   <a href="#platform">platform</a>
@@ -9752,6 +9892,7 @@ imported by:
  &#8226;   <a href="#click._winconsole">click._winconsole</a>
  &#8226;   <a href="#colorama.win32">colorama.win32</a>
  &#8226;   <a href="#ctypes.util">ctypes.util</a>
+ &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#scapy.arch.windows.structures">scapy.arch.windows.structures</a>
  &#8226;   <a href="#setuptools.windows_support">setuptools.windows_support</a>
 
@@ -9765,6 +9906,25 @@ imported by:
 <span class="moduletype">MissingModule</span>  <div class="import">
 imported by:
     <a href="#pydantic.v1.version">pydantic.v1.version</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="database"></a>
+  <a target="code" href="///C:/Users/jibin/netguard/daemon/database.py" type="text/plain"><tt>database</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#db_path">db_path</a>
+ &#8226;   <a href="#schema_extensions">schema_extensions</a>
+ &#8226;   <a href="#sqlite3">sqlite3</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#detection.policy_engine">detection.policy_engine</a>
+ &#8226;   <a href="#main.py">main.py</a>
 
   </div>
 
@@ -9877,11 +10037,16 @@ imported by:
  &#8226;   <a href="#click.types">click.types</a>
  &#8226;   <a href="#cryptography.x509.base">cryptography.x509.base</a>
  &#8226;   <a href="#cryptography.x509.extensions">cryptography.x509.extensions</a>
+ &#8226;   <a href="#detection.policy_engine">detection.policy_engine</a>
+ &#8226;   <a href="#detection.threat_intel">detection.threat_intel</a>
  &#8226;   <a href="#email.utils">email.utils</a>
  &#8226;   <a href="#fastapi.encoders">fastapi.encoders</a>
+ &#8226;   <a href="#features">features</a>
  &#8226;   <a href="#http.cookiejar">http.cookiejar</a>
  &#8226;   <a href="#http.server">http.server</a>
  &#8226;   <a href="#main.py">main.py</a>
+ &#8226;   <a href="#msp">msp</a>
+ &#8226;   <a href="#password_vault">password_vault</a>
  &#8226;   <a href="#pydantic._internal._generate_schema">pydantic._internal._generate_schema</a>
  &#8226;   <a href="#pydantic.deprecated.json">pydantic.deprecated.json</a>
  &#8226;   <a href="#pydantic.experimental.pipeline">pydantic.experimental.pipeline</a>
@@ -9899,6 +10064,7 @@ imported by:
  &#8226;   <a href="#scapy">scapy</a>
  &#8226;   <a href="#scapy.asn1.asn1">scapy.asn1.asn1</a>
  &#8226;   <a href="#scapy.fields">scapy.fields</a>
+ &#8226;   <a href="#schema_extensions">schema_extensions</a>
  &#8226;   <a href="#setuptools._vendor.tomli._re">setuptools._vendor.tomli._re</a>
  &#8226;   <a href="#setuptools.warnings">setuptools.warnings</a>
  &#8226;   <a href="#smtplib">smtplib</a>
@@ -9910,6 +10076,29 @@ imported by:
  &#8226;   <a href="#yaml.constructor">yaml.constructor</a>
  &#8226;   <a href="#yaml.representer">yaml.representer</a>
  &#8226;   <a href="#zoneinfo._zoneinfo">zoneinfo._zoneinfo</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="db_path"></a>
+  <a target="code" href="///C:/Users/jibin/netguard/daemon/db_path.py" type="text/plain"><tt>db_path</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#os">os</a>
+ &#8226;   <a href="#sqlite3">sqlite3</a>
+ &#8226;   <a href="#sys">sys</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#database">database</a>
+ &#8226;   <a href="#detection.policy_engine">detection.policy_engine</a>
+ &#8226;   <a href="#detection.threat_intel">detection.threat_intel</a>
+ &#8226;   <a href="#dns_blocker">dns_blocker</a>
+ &#8226;   <a href="#main.py">main.py</a>
+ &#8226;   <a href="#password_vault">password_vault</a>
 
   </div>
 
@@ -9944,6 +10133,70 @@ imported by:
  &#8226;   <a href="#setuptools.config._validate_pyproject.fastjsonschema_validations">setuptools.config._validate_pyproject.fastjsonschema_validations</a>
  &#8226;   <a href="#statistics">statistics</a>
  &#8226;   <a href="#xmlrpc.client">xmlrpc.client</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="detection"></a>
+  <a target="code" href="-" type="text/plain"><tt>detection</tt></a>
+<span class="moduletype">NamespacePackage</span>  <div class="import">
+imported by:
+    <a href="#detection.policy_engine">detection.policy_engine</a>
+ &#8226;   <a href="#detection.threat_intel">detection.threat_intel</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="detection.policy_engine"></a>
+  <a target="code" href="///C:/Users/jibin/netguard/daemon/detection/policy_engine.py" type="text/plain"><tt>detection.policy_engine</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#__future__">__future__</a>
+ &#8226;   <a href="#database">database</a>
+ &#8226;   <a href="#datetime">datetime</a>
+ &#8226;   <a href="#db_path">db_path</a>
+ &#8226;   <a href="#detection">detection</a>
+ &#8226;   <a href="#json">json</a>
+ &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#pathlib">pathlib</a>
+ &#8226;   <a href="#sqlite3">sqlite3</a>
+ &#8226;   <a href="#sys">sys</a>
+ &#8226;   <a href="#time">time</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#features">features</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="detection.threat_intel"></a>
+  <a target="code" href="///C:/Users/jibin/netguard/daemon/detection/threat_intel.py" type="text/plain"><tt>detection.threat_intel</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#__future__">__future__</a>
+ &#8226;   <a href="#datetime">datetime</a>
+ &#8226;   <a href="#db_path">db_path</a>
+ &#8226;   <a href="#detection">detection</a>
+ &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#pathlib">pathlib</a>
+ &#8226;   <a href="#schema_extensions">schema_extensions</a>
+ &#8226;   <a href="#sqlite3">sqlite3</a>
+ &#8226;   <a href="#sys">sys</a>
+ &#8226;   <a href="#time">time</a>
+ &#8226;   <a href="#urllib.request">urllib.request</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#features">features</a>
 
   </div>
 
@@ -10036,6 +10289,29 @@ imported by:
  &#8226;   <a href="#setuptools.errors">setuptools.errors</a>
  &#8226;   <a href="#setuptools.installer">setuptools.installer</a>
  &#8226;   <a href="#setuptools.wheel">setuptools.wheel</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="dns_blocker"></a>
+  <a target="code" href="///C:/Users/jibin/netguard/daemon/enforcement/dns_blocker.py" type="text/plain"><tt>dns_blocker</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#__future__">__future__</a>
+ &#8226;   <a href="#db_path">db_path</a>
+ &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#socket">socket</a>
+ &#8226;   <a href="#sqlite3">sqlite3</a>
+ &#8226;   <a href="#subprocess">subprocess</a>
+ &#8226;   <a href="#sys">sys</a>
+ &#8226;   <a href="#time">time</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#router_manager">router_manager</a>
 
   </div>
 
@@ -13396,7 +13672,9 @@ imported by:
  &#8226;   <a href="#fastapi.types">fastapi.types</a>
  &#8226;   <a href="#fastapi.utils">fastapi.utils</a>
  &#8226;   <a href="#fastapi.websockets">fastapi.websockets</a>
+ &#8226;   <a href="#features">features</a>
  &#8226;   <a href="#main.py">main.py</a>
+ &#8226;   <a href="#msp">msp</a>
 
   </div>
 
@@ -14465,6 +14743,39 @@ imported by:
 </div>
 
 <div class="node">
+  <a name="features"></a>
+  <a target="code" href="///C:/Users/jibin/netguard/api/features.py" type="text/plain"><tt>features</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#__future__">__future__</a>
+ &#8226;   <a href="#datetime">datetime</a>
+ &#8226;   <a href="#detection.policy_engine">detection.policy_engine</a>
+ &#8226;   <a href="#detection.threat_intel">detection.threat_intel</a>
+ &#8226;   <a href="#fastapi">fastapi</a>
+ &#8226;   <a href="#importlib">importlib</a>
+ &#8226;   <a href="#json">json</a>
+ &#8226;   <a href="#notifier">notifier</a>
+ &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#pydantic">pydantic</a>
+ &#8226;   <a href="#pydantic.BaseModel">pydantic.BaseModel</a>
+ &#8226;   <a href="#schema_extensions">schema_extensions</a>
+ &#8226;   <a href="#sqlite3">sqlite3</a>
+ &#8226;   <a href="#subprocess">subprocess</a>
+ &#8226;   <a href="#sys">sys</a>
+ &#8226;   <a href="#typing">typing</a>
+ &#8226;   <a href="#urllib.request">urllib.request</a>
+ &#8226;   <a href="#weekly_report">weekly_report</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
   <a name="fnmatch"></a>
   <a target="code" href="///C:/Python314/Lib/fnmatch.py" type="text/plain"><tt>fnmatch</tt></a>
 <span class="moduletype">SourceModule</span>  <div class="import">
@@ -14796,6 +15107,7 @@ imports:
   <div class="import">
 imported by:
     <a href="#click.termui">click.termui</a>
+ &#8226;   <a href="#password_vault">password_vault</a>
 
   </div>
 
@@ -15213,6 +15525,8 @@ imports:
 imported by:
     <a href="#cryptography.x509.extensions">cryptography.x509.extensions</a>
  &#8226;   <a href="#hmac">hmac</a>
+ &#8226;   <a href="#linksys_client">linksys_client</a>
+ &#8226;   <a href="#password_vault">password_vault</a>
  &#8226;   <a href="#random">random</a>
  &#8226;   <a href="#requests.auth">requests.auth</a>
  &#8226;   <a href="#scapy.data">scapy.data</a>
@@ -15779,6 +16093,7 @@ imported by:
  &#8226;   <a href="#charset_normalizer.cd">charset_normalizer.cd</a>
  &#8226;   <a href="#charset_normalizer.utils">charset_normalizer.utils</a>
  &#8226;   <a href="#fastapi.responses">fastapi.responses</a>
+ &#8226;   <a href="#features">features</a>
  &#8226;   <a href="#importlib">importlib</a>
  &#8226;   <a href="#importlib._abc">importlib._abc</a>
  &#8226;   <a href="#importlib._bootstrap">importlib._bootstrap</a>
@@ -16775,15 +17090,19 @@ imports:
   <div class="import">
 imported by:
     <a href="#charset_normalizer.models">charset_normalizer.models</a>
+ &#8226;   <a href="#detection.policy_engine">detection.policy_engine</a>
  &#8226;   <a href="#fastapi.openapi.docs">fastapi.openapi.docs</a>
  &#8226;   <a href="#fastapi.routing">fastapi.routing</a>
+ &#8226;   <a href="#features">features</a>
  &#8226;   <a href="#importlib.metadata">importlib.metadata</a>
  &#8226;   <a href="#json.decoder">json.decoder</a>
  &#8226;   <a href="#json.encoder">json.encoder</a>
  &#8226;   <a href="#json.scanner">json.scanner</a>
+ &#8226;   <a href="#linksys_client">linksys_client</a>
  &#8226;   <a href="#logging.config">logging.config</a>
  &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#multiprocessing.resource_tracker">multiprocessing.resource_tracker</a>
+ &#8226;   <a href="#openwrt_client">openwrt_client</a>
  &#8226;   <a href="#pydantic.deprecated.parse">pydantic.deprecated.parse</a>
  &#8226;   <a href="#pydantic.deprecated.tools">pydantic.deprecated.tools</a>
  &#8226;   <a href="#pydantic.main">pydantic.main</a>
@@ -16793,6 +17112,7 @@ imported by:
  &#8226;   <a href="#pydantic.v1.parse">pydantic.v1.parse</a>
  &#8226;   <a href="#pydantic.v1.tools">pydantic.v1.tools</a>
  &#8226;   <a href="#requests.compat">requests.compat</a>
+ &#8226;   <a href="#router_manager">router_manager</a>
  &#8226;   <a href="#scapy.libs.bluetoothids">scapy.libs.bluetoothids</a>
  &#8226;   <a href="#scapy.packet">scapy.packet</a>
  &#8226;   <a href="#setuptools._vendor.importlib_metadata">setuptools._vendor.importlib_metadata</a>
@@ -16911,6 +17231,28 @@ imported by:
  &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#traceback">traceback</a>
  &#8226;   <a href="#tracemalloc">tracemalloc</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="linksys_client"></a>
+  <a target="code" href="///C:/Users/jibin/netguard/daemon/enforcement/linksys_client.py" type="text/plain"><tt>linksys_client</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#__future__">__future__</a>
+ &#8226;   <a href="#hashlib">hashlib</a>
+ &#8226;   <a href="#json">json</a>
+ &#8226;   <a href="#typing">typing</a>
+ &#8226;   <a href="#urllib.error">urllib.error</a>
+ &#8226;   <a href="#urllib.request">urllib.request</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#router_manager">router_manager</a>
 
   </div>
 
@@ -17264,6 +17606,29 @@ imported by:
  &#8226;   <a href="#setuptools.config.pyprojecttoml">setuptools.config.pyprojecttoml</a>
  &#8226;   <a href="#setuptools.dist">setuptools.dist</a>
  &#8226;   <a href="#setuptools.msvc">setuptools.msvc</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="msp"></a>
+  <a target="code" href="///C:/Users/jibin/netguard/api/msp.py" type="text/plain"><tt>msp</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#__future__">__future__</a>
+ &#8226;   <a href="#datetime">datetime</a>
+ &#8226;   <a href="#fastapi">fastapi</a>
+ &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#pydantic">pydantic</a>
+ &#8226;   <a href="#pydantic.BaseModel">pydantic.BaseModel</a>
+ &#8226;   <a href="#sqlite3">sqlite3</a>
+ &#8226;   <a href="#typing">typing</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
 
   </div>
 
@@ -18158,6 +18523,17 @@ imported by:
 </div>
 
 <div class="node">
+  <a name="notifier"></a>
+  <a target="code" href="" type="text/plain"><tt>notifier</tt></a>
+<span class="moduletype">MissingModule</span>  <div class="import">
+imported by:
+    <a href="#features">features</a>
+
+  </div>
+
+</div>
+
+<div class="node">
   <a name="nt"></a>
   <tt>nt</tt> <span class="moduletype"><i>(builtin module)</i></span>  <div class="import">
 imported by:
@@ -18229,6 +18605,27 @@ imports:
   <div class="import">
 imported by:
     <a href="#dis">dis</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="openwrt_client"></a>
+  <a target="code" href="///C:/Users/jibin/netguard/daemon/enforcement/openwrt_client.py" type="text/plain"><tt>openwrt_client</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#__future__">__future__</a>
+ &#8226;   <a href="#json">json</a>
+ &#8226;   <a href="#typing">typing</a>
+ &#8226;   <a href="#urllib.error">urllib.error</a>
+ &#8226;   <a href="#urllib.request">urllib.request</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#router_manager">router_manager</a>
 
   </div>
 
@@ -18356,14 +18753,20 @@ imported by:
  &#8226;   <a href="#concurrent.futures.thread">concurrent.futures.thread</a>
  &#8226;   <a href="#configparser">configparser</a>
  &#8226;   <a href="#contextlib">contextlib</a>
+ &#8226;   <a href="#cryptography.fernet">cryptography.fernet</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.serialization.ssh">cryptography.hazmat.primitives.serialization.ssh</a>
  &#8226;   <a href="#cryptography.x509.base">cryptography.x509.base</a>
  &#8226;   <a href="#ctypes">ctypes</a>
  &#8226;   <a href="#ctypes._aix">ctypes._aix</a>
  &#8226;   <a href="#ctypes.macholib.dyld">ctypes.macholib.dyld</a>
  &#8226;   <a href="#ctypes.util">ctypes.util</a>
+ &#8226;   <a href="#db_path">db_path</a>
+ &#8226;   <a href="#detection.policy_engine">detection.policy_engine</a>
+ &#8226;   <a href="#detection.threat_intel">detection.threat_intel</a>
+ &#8226;   <a href="#dns_blocker">dns_blocker</a>
  &#8226;   <a href="#dotenv.main">dotenv.main</a>
  &#8226;   <a href="#email.utils">email.utils</a>
+ &#8226;   <a href="#features">features</a>
  &#8226;   <a href="#fnmatch">fnmatch</a>
  &#8226;   <a href="#functools">functools</a>
  &#8226;   <a href="#genericpath">genericpath</a>
@@ -18387,6 +18790,7 @@ imported by:
  &#8226;   <a href="#lzma">lzma</a>
  &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#mimetypes">mimetypes</a>
+ &#8226;   <a href="#msp">msp</a>
  &#8226;   <a href="#multiprocessing.connection">multiprocessing.connection</a>
  &#8226;   <a href="#multiprocessing.context">multiprocessing.context</a>
  &#8226;   <a href="#multiprocessing.forkserver">multiprocessing.forkserver</a>
@@ -18411,6 +18815,7 @@ imported by:
  &#8226;   <a href="#packaging._elffile">packaging._elffile</a>
  &#8226;   <a href="#packaging._manylinux">packaging._manylinux</a>
  &#8226;   <a href="#packaging.markers">packaging.markers</a>
+ &#8226;   <a href="#password_vault">password_vault</a>
  &#8226;   <a href="#pathlib">pathlib</a>
  &#8226;   <a href="#pathlib._os">pathlib._os</a>
  &#8226;   <a href="#pkgutil">pkgutil</a>
@@ -18430,6 +18835,7 @@ imported by:
  &#8226;   <a href="#requests.auth">requests.auth</a>
  &#8226;   <a href="#requests.sessions">requests.sessions</a>
  &#8226;   <a href="#requests.utils">requests.utils</a>
+ &#8226;   <a href="#router_manager">router_manager</a>
  &#8226;   <a href="#runpy">runpy</a>
  &#8226;   <a href="#scapy">scapy</a>
  &#8226;   <a href="#scapy.arch.bpf.core">scapy.arch.bpf.core</a>
@@ -18970,8 +19376,27 @@ imported by:
 
 <div class="node">
   <a name="password_vault"></a>
-  <a target="code" href="" type="text/plain"><tt>password_vault</tt></a>
-<span class="moduletype">MissingModule</span>  <div class="import">
+  <a target="code" href="///C:/Users/jibin/netguard/daemon/vault/password_vault.py" type="text/plain"><tt>password_vault</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#base64">base64</a>
+ &#8226;   <a href="#cryptography.fernet">cryptography.fernet</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives">cryptography.hazmat.primitives</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives.hashes">cryptography.hazmat.primitives.hashes</a>
+ &#8226;   <a href="#cryptography.hazmat.primitives.kdf.pbkdf2">cryptography.hazmat.primitives.kdf.pbkdf2</a>
+ &#8226;   <a href="#datetime">datetime</a>
+ &#8226;   <a href="#db_path">db_path</a>
+ &#8226;   <a href="#getpass">getpass</a>
+ &#8226;   <a href="#hashlib">hashlib</a>
+ &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#re">re</a>
+ &#8226;   <a href="#requests">requests</a>
+ &#8226;   <a href="#sqlite3">sqlite3</a>
+ &#8226;   <a href="#string">string</a>
+ &#8226;   <a href="#sys">sys</a>
+
+  </div>
+  <div class="import">
 imported by:
     <a href="#main.py">main.py</a>
 
@@ -19010,6 +19435,8 @@ imported by:
     <a href="#_pyrepl.terminfo">_pyrepl.terminfo</a>
  &#8226;   <a href="#anyio._core._fileio">anyio._core._fileio</a>
  &#8226;   <a href="#click._termui_impl">click._termui_impl</a>
+ &#8226;   <a href="#detection.policy_engine">detection.policy_engine</a>
+ &#8226;   <a href="#detection.threat_intel">detection.threat_intel</a>
  &#8226;   <a href="#dotenv.main">dotenv.main</a>
  &#8226;   <a href="#fastapi.encoders">fastapi.encoders</a>
  &#8226;   <a href="#importlib.metadata">importlib.metadata</a>
@@ -19491,7 +19918,9 @@ imported by:
  &#8226;   <a href="#fastapi.security.http">fastapi.security.http</a>
  &#8226;   <a href="#fastapi.sse">fastapi.sse</a>
  &#8226;   <a href="#fastapi.types">fastapi.types</a>
+ &#8226;   <a href="#features">features</a>
  &#8226;   <a href="#main.py">main.py</a>
+ &#8226;   <a href="#msp">msp</a>
  &#8226;   <a href="#pydantic">pydantic</a>
  &#8226;   <a href="#pydantic._internal">pydantic._internal</a>
  &#8226;   <a href="#pydantic._internal._core_utils">pydantic._internal._core_utils</a>
@@ -19561,7 +19990,9 @@ imported by:
  &#8226;   <a href="#fastapi.security.http">fastapi.security.http</a>
  &#8226;   <a href="#fastapi.sse">fastapi.sse</a>
  &#8226;   <a href="#fastapi.types">fastapi.types</a>
+ &#8226;   <a href="#features">features</a>
  &#8226;   <a href="#main.py">main.py</a>
+ &#8226;   <a href="#msp">msp</a>
  &#8226;   <a href="#pydantic">pydantic</a>
  &#8226;   <a href="#pydantic._internal._core_utils">pydantic._internal._core_utils</a>
  &#8226;   <a href="#pydantic._internal._import_utils">pydantic._internal._import_utils</a>
@@ -23584,6 +24015,7 @@ imported by:
  &#8226;   <a href="#packaging.tags">packaging.tags</a>
  &#8226;   <a href="#packaging.utils">packaging.utils</a>
  &#8226;   <a href="#packaging.version">packaging.version</a>
+ &#8226;   <a href="#password_vault">password_vault</a>
  &#8226;   <a href="#pkgutil">pkgutil</a>
  &#8226;   <a href="#platform">platform</a>
  &#8226;   <a href="#posixpath">posixpath</a>
@@ -23876,6 +24308,7 @@ imports:
   <div class="import">
 imported by:
     <a href="#main.py">main.py</a>
+ &#8226;   <a href="#password_vault">password_vault</a>
  &#8226;   <a href="#requests">requests</a>
  &#8226;   <a href="#requests.__version__">requests.__version__</a>
  &#8226;   <a href="#requests._internal_utils">requests._internal_utils</a>
@@ -24441,6 +24874,32 @@ imported by:
     <a href="#_pyrepl.readline">_pyrepl.readline</a>
  &#8226;   <a href="#scapy.main">scapy.main</a>
  &#8226;   <a href="#site">site</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="router_manager"></a>
+  <a target="code" href="///C:/Users/jibin/netguard/daemon/enforcement/router_manager.py" type="text/plain"><tt>router_manager</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#__future__">__future__</a>
+ &#8226;   <a href="#dns_blocker">dns_blocker</a>
+ &#8226;   <a href="#json">json</a>
+ &#8226;   <a href="#linksys_client">linksys_client</a>
+ &#8226;   <a href="#openwrt_client">openwrt_client</a>
+ &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#schema_extensions">schema_extensions</a>
+ &#8226;   <a href="#sqlite3">sqlite3</a>
+ &#8226;   <a href="#sys">sys</a>
+ &#8226;   <a href="#urllib.error">urllib.error</a>
+ &#8226;   <a href="#urllib.request">urllib.request</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
 
   </div>
 
@@ -27586,6 +28045,28 @@ imported by:
  &#8226;   <a href="#scapy.packet">scapy.packet</a>
  &#8226;   <a href="#scapy.utils">scapy.utils</a>
  &#8226;   <a href="#scapy.utils6">scapy.utils6</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="schema_extensions"></a>
+  <a target="code" href="///C:/Users/jibin/netguard/daemon/schema_extensions.py" type="text/plain"><tt>schema_extensions</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#__future__">__future__</a>
+ &#8226;   <a href="#datetime">datetime</a>
+ &#8226;   <a href="#sqlite3">sqlite3</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#database">database</a>
+ &#8226;   <a href="#detection.threat_intel">detection.threat_intel</a>
+ &#8226;   <a href="#features">features</a>
+ &#8226;   <a href="#main.py">main.py</a>
+ &#8226;   <a href="#router_manager">router_manager</a>
 
   </div>
 
@@ -31690,6 +32171,7 @@ imported by:
  &#8226;   <a href="#asyncio.trsock">asyncio.trsock</a>
  &#8226;   <a href="#asyncio.unix_events">asyncio.unix_events</a>
  &#8226;   <a href="#asyncio.windows_events">asyncio.windows_events</a>
+ &#8226;   <a href="#dns_blocker">dns_blocker</a>
  &#8226;   <a href="#email.utils">email.utils</a>
  &#8226;   <a href="#ftplib">ftplib</a>
  &#8226;   <a href="#http.client">http.client</a>
@@ -31815,7 +32297,17 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#main.py">main.py</a>
+    <a href="#database">database</a>
+ &#8226;   <a href="#db_path">db_path</a>
+ &#8226;   <a href="#detection.policy_engine">detection.policy_engine</a>
+ &#8226;   <a href="#detection.threat_intel">detection.threat_intel</a>
+ &#8226;   <a href="#dns_blocker">dns_blocker</a>
+ &#8226;   <a href="#features">features</a>
+ &#8226;   <a href="#main.py">main.py</a>
+ &#8226;   <a href="#msp">msp</a>
+ &#8226;   <a href="#password_vault">password_vault</a>
+ &#8226;   <a href="#router_manager">router_manager</a>
+ &#8226;   <a href="#schema_extensions">schema_extensions</a>
  &#8226;   <a href="#sqlite3">sqlite3</a>
  &#8226;   <a href="#sqlite3.__main__">sqlite3.__main__</a>
  &#8226;   <a href="#sqlite3.dbapi2">sqlite3.dbapi2</a>
@@ -32796,6 +33288,7 @@ imported by:
  &#8226;   <a href="#email.quoprimime">email.quoprimime</a>
  &#8226;   <a href="#http.cookies">http.cookies</a>
  &#8226;   <a href="#logging">logging</a>
+ &#8226;   <a href="#password_vault">password_vault</a>
  &#8226;   <a href="#scapy.volatile">scapy.volatile</a>
  &#8226;   <a href="#setuptools._distutils.fancy_getopt">setuptools._distutils.fancy_getopt</a>
  &#8226;   <a href="#setuptools._distutils.util">setuptools._distutils.util</a>
@@ -32948,7 +33441,10 @@ imported by:
  &#8226;   <a href="#click.shell_completion">click.shell_completion</a>
  &#8226;   <a href="#ctypes._aix">ctypes._aix</a>
  &#8226;   <a href="#ctypes.util">ctypes.util</a>
+ &#8226;   <a href="#dns_blocker">dns_blocker</a>
+ &#8226;   <a href="#features">features</a>
  &#8226;   <a href="#http.server">http.server</a>
+ &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#multiprocessing.popen_spawn_win32">multiprocessing.popen_spawn_win32</a>
  &#8226;   <a href="#multiprocessing.util">multiprocessing.util</a>
  &#8226;   <a href="#os">os</a>
@@ -33060,8 +33556,12 @@ imported by:
  &#8226;   <a href="#ctypes._layout">ctypes._layout</a>
  &#8226;   <a href="#ctypes.util">ctypes.util</a>
  &#8226;   <a href="#dataclasses">dataclasses</a>
+ &#8226;   <a href="#db_path">db_path</a>
  &#8226;   <a href="#decimal">decimal</a>
+ &#8226;   <a href="#detection.policy_engine">detection.policy_engine</a>
+ &#8226;   <a href="#detection.threat_intel">detection.threat_intel</a>
  &#8226;   <a href="#dis">dis</a>
+ &#8226;   <a href="#dns_blocker">dns_blocker</a>
  &#8226;   <a href="#dotenv.main">dotenv.main</a>
  &#8226;   <a href="#email._header_value_parser">email._header_value_parser</a>
  &#8226;   <a href="#email.contentmanager">email.contentmanager</a>
@@ -33075,6 +33575,7 @@ imported by:
  &#8226;   <a href="#enum">enum</a>
  &#8226;   <a href="#fastapi.dependencies.models">fastapi.dependencies.models</a>
  &#8226;   <a href="#fastapi.dependencies.utils">fastapi.dependencies.utils</a>
+ &#8226;   <a href="#features">features</a>
  &#8226;   <a href="#fractions">fractions</a>
  &#8226;   <a href="#ftplib">ftplib</a>
  &#8226;   <a href="#getopt">getopt</a>
@@ -33119,6 +33620,7 @@ imported by:
  &#8226;   <a href="#packaging.specifiers">packaging.specifiers</a>
  &#8226;   <a href="#packaging.tags">packaging.tags</a>
  &#8226;   <a href="#packaging.version">packaging.version</a>
+ &#8226;   <a href="#password_vault">password_vault</a>
  &#8226;   <a href="#pathlib">pathlib</a>
  &#8226;   <a href="#pathlib._os">pathlib._os</a>
  &#8226;   <a href="#pickle">pickle</a>
@@ -33165,6 +33667,7 @@ imported by:
  &#8226;   <a href="#requests.packages">requests.packages</a>
  &#8226;   <a href="#requests.sessions">requests.sessions</a>
  &#8226;   <a href="#requests.utils">requests.utils</a>
+ &#8226;   <a href="#router_manager">router_manager</a>
  &#8226;   <a href="#runpy">runpy</a>
  &#8226;   <a href="#scapy.arch">scapy.arch</a>
  &#8226;   <a href="#scapy.arch.bpf.supersocket">scapy.arch.bpf.supersocket</a>
@@ -33589,7 +34092,11 @@ imported by:
  &#8226;   <a href="#click._winconsole">click._winconsole</a>
  &#8226;   <a href="#concurrent.futures._base">concurrent.futures._base</a>
  &#8226;   <a href="#concurrent.interpreters._queues">concurrent.interpreters._queues</a>
+ &#8226;   <a href="#cryptography.fernet">cryptography.fernet</a>
  &#8226;   <a href="#datetime">datetime</a>
+ &#8226;   <a href="#detection.policy_engine">detection.policy_engine</a>
+ &#8226;   <a href="#detection.threat_intel">detection.threat_intel</a>
+ &#8226;   <a href="#dns_blocker">dns_blocker</a>
  &#8226;   <a href="#email._parseaddr">email._parseaddr</a>
  &#8226;   <a href="#email.generator">email.generator</a>
  &#8226;   <a href="#email.utils">email.utils</a>
@@ -33600,6 +34107,7 @@ imported by:
  &#8226;   <a href="#http.server">http.server</a>
  &#8226;   <a href="#logging">logging</a>
  &#8226;   <a href="#logging.handlers">logging.handlers</a>
+ &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#multiprocessing.connection">multiprocessing.connection</a>
  &#8226;   <a href="#multiprocessing.managers">multiprocessing.managers</a>
  &#8226;   <a href="#multiprocessing.pool">multiprocessing.pool</a>
@@ -34199,6 +34707,7 @@ imported by:
  &#8226;   <a href="#click.utils">click.utils</a>
  &#8226;   <a href="#copyreg">copyreg</a>
  &#8226;   <a href="#cryptography.exceptions">cryptography.exceptions</a>
+ &#8226;   <a href="#cryptography.fernet">cryptography.fernet</a>
  &#8226;   <a href="#cryptography.hazmat.backends">cryptography.hazmat.backends</a>
  &#8226;   <a href="#cryptography.hazmat.bindings.openssl.binding">cryptography.hazmat.bindings.openssl.binding</a>
  &#8226;   <a href="#cryptography.hazmat.primitives.asymmetric.dsa">cryptography.hazmat.primitives.asymmetric.dsa</a>
@@ -34242,6 +34751,7 @@ imported by:
  &#8226;   <a href="#fastapi.sse">fastapi.sse</a>
  &#8226;   <a href="#fastapi.types">fastapi.types</a>
  &#8226;   <a href="#fastapi.utils">fastapi.utils</a>
+ &#8226;   <a href="#features">features</a>
  &#8226;   <a href="#functools">functools</a>
  &#8226;   <a href="#h11._connection">h11._connection</a>
  &#8226;   <a href="#h11._events">h11._events</a>
@@ -34258,6 +34768,9 @@ imported by:
  &#8226;   <a href="#importlib.metadata._meta">importlib.metadata._meta</a>
  &#8226;   <a href="#importlib.resources._common">importlib.resources._common</a>
  &#8226;   <a href="#importlib.resources.abc">importlib.resources.abc</a>
+ &#8226;   <a href="#linksys_client">linksys_client</a>
+ &#8226;   <a href="#msp">msp</a>
+ &#8226;   <a href="#openwrt_client">openwrt_client</a>
  &#8226;   <a href="#packaging._elffile">packaging._elffile</a>
  &#8226;   <a href="#packaging._manylinux">packaging._manylinux</a>
  &#8226;   <a href="#packaging._musllinux">packaging._musllinux</a>
@@ -35186,7 +35699,10 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#pathlib">pathlib</a>
+    <a href="#linksys_client">linksys_client</a>
+ &#8226;   <a href="#openwrt_client">openwrt_client</a>
+ &#8226;   <a href="#pathlib">pathlib</a>
+ &#8226;   <a href="#router_manager">router_manager</a>
  &#8226;   <a href="#urllib.request">urllib.request</a>
 
   </div>
@@ -35284,9 +35800,14 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#http.cookiejar">http.cookiejar</a>
+    <a href="#detection.threat_intel">detection.threat_intel</a>
+ &#8226;   <a href="#features">features</a>
+ &#8226;   <a href="#http.cookiejar">http.cookiejar</a>
+ &#8226;   <a href="#linksys_client">linksys_client</a>
+ &#8226;   <a href="#openwrt_client">openwrt_client</a>
  &#8226;   <a href="#pathlib">pathlib</a>
  &#8226;   <a href="#requests.compat">requests.compat</a>
+ &#8226;   <a href="#router_manager">router_manager</a>
  &#8226;   <a href="#setuptools._vendor.jaraco.context">setuptools._vendor.jaraco.context</a>
  &#8226;   <a href="#setuptools.config._validate_pyproject.formats">setuptools.config._validate_pyproject.formats</a>
  &#8226;   <a href="#websockets.proxy">websockets.proxy</a>
@@ -36727,7 +37248,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#uvicorn">uvicorn</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#uvicorn">uvicorn</a>
  &#8226;   <a href="#uvicorn.lifespan.off">uvicorn.lifespan.off</a>
  &#8226;   <a href="#uvicorn.lifespan.on">uvicorn.lifespan.on</a>
 
@@ -36770,7 +37292,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#uvicorn">uvicorn</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#uvicorn">uvicorn</a>
 
   </div>
 
@@ -36793,7 +37316,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#uvicorn">uvicorn</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#uvicorn">uvicorn</a>
  &#8226;   <a href="#uvicorn.config">uvicorn.config</a>
  &#8226;   <a href="#uvicorn.middleware.message_logger">uvicorn.middleware.message_logger</a>
  &#8226;   <a href="#uvicorn.protocols.http.h11_impl">uvicorn.protocols.http.h11_impl</a>
@@ -36816,7 +37340,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#uvicorn">uvicorn</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#uvicorn">uvicorn</a>
  &#8226;   <a href="#uvicorn.loops.asyncio">uvicorn.loops.asyncio</a>
  &#8226;   <a href="#uvicorn.loops.auto">uvicorn.loops.auto</a>
  &#8226;   <a href="#uvicorn.loops.uvloop">uvicorn.loops.uvloop</a>
@@ -36862,7 +37387,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#uvicorn">uvicorn</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#uvicorn">uvicorn</a>
 
   </div>
 
@@ -37037,7 +37563,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#uvicorn">uvicorn</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#uvicorn">uvicorn</a>
  &#8226;   <a href="#uvicorn.protocols.http">uvicorn.protocols.http</a>
  &#8226;   <a href="#uvicorn.protocols.utils">uvicorn.protocols.utils</a>
  &#8226;   <a href="#uvicorn.protocols.websockets">uvicorn.protocols.websockets</a>
@@ -37056,7 +37583,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#uvicorn">uvicorn</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#uvicorn">uvicorn</a>
  &#8226;   <a href="#uvicorn.protocols.http.auto">uvicorn.protocols.http.auto</a>
  &#8226;   <a href="#uvicorn.protocols.http.flow_control">uvicorn.protocols.http.flow_control</a>
  &#8226;   <a href="#uvicorn.protocols.http.h11_impl">uvicorn.protocols.http.h11_impl</a>
@@ -37081,7 +37609,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#uvicorn">uvicorn</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#uvicorn">uvicorn</a>
 
   </div>
 
@@ -37215,7 +37744,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#uvicorn">uvicorn</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#uvicorn">uvicorn</a>
  &#8226;   <a href="#uvicorn.protocols.websockets.auto">uvicorn.protocols.websockets.auto</a>
  &#8226;   <a href="#uvicorn.protocols.websockets.websockets_impl">uvicorn.protocols.websockets.websockets_impl</a>
  &#8226;   <a href="#uvicorn.protocols.websockets.websockets_sansio_impl">uvicorn.protocols.websockets.websockets_sansio_impl</a>
@@ -37242,7 +37772,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#uvicorn">uvicorn</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#uvicorn">uvicorn</a>
 
   </div>
 
@@ -39609,6 +40140,17 @@ imported by:
     <a href="#websockets">websockets</a>
  &#8226;   <a href="#websockets.cli">websockets.cli</a>
  &#8226;   <a href="#websockets.http11">websockets.http11</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="weekly_report"></a>
+  <a target="code" href="" type="text/plain"><tt>weekly_report</tt></a>
+<span class="moduletype">MissingModule</span>  <div class="import">
+imported by:
+    <a href="#features">features</a>
 
   </div>
 

@@ -1,22 +1,22 @@
 ﻿type Platform = 'windows' | 'pi' | 'unknown';
 
 export function getBlockModalMessage(isBlocked: boolean, platform: Platform): string {
-  const routerHint =
-    "Router enforcement (Settings → Router) pauses the device on Linksys/OpenWrt when configured.";
-
   if (isBlocked) {
-    if (platform === 'windows' || platform === 'pi') {
+    if (platform === 'pi') {
+      return 'This device will regain network access within a few seconds.';
+    }
+    if (platform === 'windows') {
       return 'This device will be unblocked in NetGuard and resumed on your router if configured.';
     }
     return 'This device will be unblocked.';
   }
 
   if (platform === 'windows') {
-    return `${routerHint} Otherwise it is dashboard-only. Continue?`;
+    return 'This will flag the device in the dashboard. To enforce real network blocking, deploy NetGuard on a Raspberry Pi connected to your network.';
   }
 
   if (platform === 'pi') {
-    return `${routerHint} On Pi, ARP network blocker is a fallback when router API is unavailable. Continue?`;
+    return 'This will disconnect the device from the network via your router. The device will lose internet access immediately. Click Unblock to restore access.';
   }
 
   return 'This device will be blocked.';

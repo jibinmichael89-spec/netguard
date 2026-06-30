@@ -41,11 +41,41 @@ if (Test-Path $legacyDb) {
 
 [Environment]::SetEnvironmentVariable("NETGUARD_DB_PATH", $dbPath, "Machine")
 
+$npcapScript = Join-Path $InstallDir "Install-Npcap.ps1"
+if (-not (Test-Path $npcapScript)) {
+    $npcapScript = Join-Path $RepoRoot "build\windows\Install-Npcap.ps1"
+}
+if (Test-Path $npcapScript) {
+    Write-Host "[*] Ensuring Npcap packet capture driver ..."
+    $prereqDir = Join-Path $RepoRoot "build\prerequisites"
+    & $npcapScript -PrereqDir $prereqDir
+}
+
 Write-Host "[*] Reinstalling from latest build ..."
 & (Join-Path $RepoRoot "install\profiles\windows-home\install.ps1") -InstallDir $InstallDir
 
-Write-Host "[*] Starting NetGuard ..."
-& (Join-Path $InstallDir "START-NetGuard.bat")
+Write-Host "[*] Waiting for NetGuard API (install registers and starts services) ..."
+$healthy = $false
+for ($attempt = 0; $attempt -lt 30; $attempt++) {
+    Start-Sleep -Seconds 2
+    try {
+        $health = Invoke-RestMethod -Uri "http://127.0.0.1:8000/health" -TimeoutSec 4
+        if ($health.status -eq "ok") {
+            $healthy = $true
+            break
+        }
+    } catch {
+        # API still starting
+    }
+}
 
-Start-Sleep -Seconds 8
+if (-not $healthy) {
+    Write-Host "[*] API not responding yet - running START-NetGuard.bat ..."
+    $launcher = Join-Path $InstallDir "START-NetGuard.bat"
+    if (Test-Path $launcher) {
+        & $launcher
+    }
+    Start-Sleep -Seconds 8
+}
+
 & (Join-Path $RepoRoot "scripts\Verify-NetGuard-Windows.ps1") -InstallDir $InstallDir
