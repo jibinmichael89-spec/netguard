@@ -5,6 +5,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Test-NpcapInstalled {
+    if (Test-Path "$env:ProgramFiles\Npcap\wpcap.dll") { return $true }
+    if (Test-Path "${env:ProgramFiles(x86)}\Npcap\wpcap.dll") { return $true }
+    $svc = Get-Service -Name "npcap" -ErrorAction SilentlyContinue
+    return ($null -ne $svc)
+}
+
 function Test-IsAdmin {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
@@ -218,6 +225,12 @@ if ($CaptureOnly) {
         exit 1
     }
 
+    if (-not (Test-NpcapInstalled)) {
+        Write-ServiceLog "ERROR: Npcap is not installed - DNS/DHCP/inbound capture cannot start"
+        Write-ServiceLog "Install Npcap from https://npcap.com (default options) and restart NetGuard"
+        exit 1
+    }
+
     Write-ServiceLog "Starting capture engines (elevated) from $InstallDir"
     $count = 0
     foreach ($engine in $captureEngines) {
@@ -249,11 +262,16 @@ if (-not $apiStarted) {
 }
 
 if (Test-IsAdmin) {
-    $captureStarted = 0
-    foreach ($engine in $captureEngines) {
-        if (Start-Engine -BaseDir $InstallDir -Engine $engine) { $captureStarted++ }
+    if (-not (Test-NpcapInstalled)) {
+        Write-ServiceLog "WARNING: Npcap not installed - packet capture engines will not run"
+        Write-ServiceLog "Install from https://npcap.com then run Repair-NetGuard-Windows.ps1 as Administrator"
+    } else {
+        $captureStarted = 0
+        foreach ($engine in $captureEngines) {
+            if (Start-Engine -BaseDir $InstallDir -Engine $engine) { $captureStarted++ }
+        }
+        Write-ServiceLog "Capture services running: $captureStarted/$($captureEngines.Count)"
     }
-    Write-ServiceLog "Capture services running: $captureStarted/$($captureEngines.Count)"
 } else {
     Write-ServiceLog "Requesting Administrator elevation for packet-capture engines ..."
     $elevatedArgs = @(

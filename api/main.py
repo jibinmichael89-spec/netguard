@@ -10,6 +10,7 @@ import socket
 import sqlite3
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, FastAPI, HTTPException, Query
@@ -529,31 +530,63 @@ def _windows_subprocess_flags() -> int:
     return getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
 
 
-def _windows_running_process_names() -> set[str]:
-    """One hidden tasklist call — avoids flashing a console per detector."""
-    try:
-        result = subprocess.run(
-            ["tasklist", "/FO", "CSV", "/NH"],
-            capture_output=True,
-            text=True,
-            timeout=8,
-            check=False,
-            creationflags=_windows_subprocess_flags(),
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return set()
+_WINDOWS_PROCESS_CACHE: tuple[float, frozenset[str]] | None = None
+_WINDOWS_PROCESS_CACHE_TTL_SEC = 25.0
+
+
+def _enumerate_windows_process_names() -> frozenset[str]:
+    """List process image names via Win32 API (no tasklist / console flash)."""
+    import ctypes
+    import ctypes.wintypes as wintypes
+
+    class PROCESSENTRY32W(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", wintypes.DWORD),
+            ("cntUsage", wintypes.DWORD),
+            ("th32ProcessID", wintypes.DWORD),
+            ("th32DefaultHeapID", ctypes.POINTER(ctypes.c_ulong)),
+            ("th32ModuleID", wintypes.DWORD),
+            ("cntThreads", wintypes.DWORD),
+            ("th32ParentProcessID", wintypes.DWORD),
+            ("pcPriClassBase", wintypes.LONG),
+            ("dwFlags", wintypes.DWORD),
+            ("szExeFile", wintypes.WCHAR * wintypes.MAX_PATH),
+        ]
+
+    TH32CS_SNAPPROCESS = 0x00000002
+    INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
+    kernel32 = ctypes.windll.kernel32
+    snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    if snapshot is None or snapshot == INVALID_HANDLE_VALUE:
+        return frozenset()
 
     names: set[str] = set()
-    for line in result.stdout.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        if line.startswith('"'):
-            end = line.find('"', 1)
-            if end > 1:
-                names.add(line[1:end].lower())
-                continue
-        names.add(line.split(",", 1)[0].strip().lower())
+    entry = PROCESSENTRY32W()
+    entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+    try:
+        if kernel32.Process32FirstW(snapshot, ctypes.byref(entry)):
+            while True:
+                if entry.szExeFile:
+                    names.add(str(entry.szExeFile).lower())
+                if not kernel32.Process32NextW(snapshot, ctypes.byref(entry)):
+                    break
+    finally:
+        kernel32.CloseHandle(snapshot)
+    return frozenset(names)
+
+
+def _windows_running_process_names() -> frozenset[str]:
+    """Cached process list for monitoring status (avoids repeated work every poll)."""
+    global _WINDOWS_PROCESS_CACHE
+    now = time.monotonic()
+    if (
+        _WINDOWS_PROCESS_CACHE is not None
+        and now - _WINDOWS_PROCESS_CACHE[0] < _WINDOWS_PROCESS_CACHE_TTL_SEC
+    ):
+        return _WINDOWS_PROCESS_CACHE[1]
+
+    names = _enumerate_windows_process_names()
+    _WINDOWS_PROCESS_CACHE = (now, names)
     return names
 
 
@@ -576,7 +609,7 @@ def _linux_process_running(detector_id: str) -> bool:
 def _is_detector_service_running(
     detector_id: str,
     *,
-    windows_process_names: set[str] | None = None,
+    windows_process_names: frozenset[str] | None = None,
 ) -> bool | None:
     """Return whether the detector process/service is running, or None if unknown."""
     entry = _DETECTOR_SERVICE_MAP.get(detector_id)
