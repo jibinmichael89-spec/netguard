@@ -19,6 +19,12 @@ function Test-Condition {
     }
 }
 
+function Test-NpcapInstalled {
+    if (Test-Path "$env:ProgramFiles\Npcap\wpcap.dll") { return $true }
+    if (Test-Path "${env:ProgramFiles(x86)}\Npcap\wpcap.dll") { return $true }
+    return ($null -ne (Get-Service -Name "npcap" -ErrorAction SilentlyContinue))
+}
+
 Write-Host ""
 Write-Host "NetGuard Windows verification" -ForegroundColor Cyan
 Write-Host "Install dir: $InstallDir"
@@ -32,6 +38,15 @@ Test-Condition "NetGuard-API.exe exists" (Test-Path (Join-Path $InstallDir "NetG
 Test-Condition "START-NetGuard.bat exists" (Test-Path (Join-Path $InstallDir "START-NetGuard.bat"))
 Test-Condition "No legacy DB in Program Files" (-not (Test-Path $legacyDb)) $legacyDb
 Test-Condition "Machine NETGUARD_DB_PATH set" ([bool]([Environment]::GetEnvironmentVariable("NETGUARD_DB_PATH", "Machine"))) ([Environment]::GetEnvironmentVariable("NETGUARD_DB_PATH", "Machine"))
+
+$npcapOk = Test-NpcapInstalled
+Test-Condition "Npcap installed (packet capture)" $npcapOk $(if ($npcapOk) { "Required for DNS/DHCP/inbound monitors" } else { "Install from https://npcap.com then re-run START-NetGuard.bat as Admin" })
+
+$captureNames = @("dns-monitor", "rogue-dhcp-detector", "inbound-connection-detector", "arp-spoof-detector")
+$captureRunning = @($captureNames | Where-Object { Get-Process -Name $_ -ErrorAction SilentlyContinue }).Count
+if ($npcapOk) {
+    Test-Condition "Capture engines running" ($captureRunning -ge 1) "$captureRunning/$($captureNames.Count) optional detectors"
+}
 
 $apiProc = Get-Process -Name "NetGuard-API" -ErrorAction SilentlyContinue
 Test-Condition "NetGuard-API process running" ($null -ne $apiProc) $(if ($apiProc) { "pid $($apiProc.Id)" } else { "Run START-NetGuard.bat as Administrator" })

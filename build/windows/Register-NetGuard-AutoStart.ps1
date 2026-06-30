@@ -53,14 +53,13 @@ if (-not (Test-Path $ServicesScript)) {
     throw "Start-NetGuard-Services.ps1 not found in $InstallDir"
 }
 
-$HostBat = Join-Path $InstallDir "NetGuard-ServiceHost.bat"
-if (-not (Test-Path $HostBat)) {
-    throw "NetGuard-ServiceHost.bat not found in $InstallDir"
-}
+$PowerShellArgs = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$ServicesScript`" -InstallDir `"$InstallDir`""
+$CaptureArgs = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$ServicesScript`" -InstallDir `"$InstallDir`" -CaptureOnly"
 
 # Remove old tasks before re-registering
 $TaskNames = @(
     "NetGuard Services",
+    "NetGuard Capture Engines",
     "NetGuard Threat Intel",
     "NetGuard MSP Heartbeat"
 )
@@ -76,8 +75,11 @@ $Settings = New-ScheduledTaskSettingsSet `
     -RestartCount 3 `
     -RestartInterval (New-TimeSpan -Minutes 1)
 
-# Boot: all scanners + API
-$BootAction = New-ScheduledTaskAction -Execute $HostBat -WorkingDirectory $InstallDir
+# Boot: core scanners + API (hidden PowerShell — no visible CMD window)
+$BootAction = New-ScheduledTaskAction `
+    -Execute "powershell.exe" `
+    -Argument $PowerShellArgs `
+    -WorkingDirectory $InstallDir
 $BootTrigger = New-ScheduledTaskTrigger -AtStartup
 $BootTrigger.Delay = "PT2M"
 Register-ScheduledTask `
@@ -86,7 +88,23 @@ Register-ScheduledTask `
     -Trigger $BootTrigger `
     -Principal $Principal `
     -Settings $Settings `
-    -Description "Starts all NetGuard security engines and API at Windows boot" `
+    -Description "Starts NetGuard core engines and API at Windows boot" `
+    -Force | Out-Null
+
+# Boot: packet-capture engines (SYSTEM + admin; needs Npcap on the host)
+$CaptureAction = New-ScheduledTaskAction `
+    -Execute "powershell.exe" `
+    -Argument $CaptureArgs `
+    -WorkingDirectory $InstallDir
+$CaptureTrigger = New-ScheduledTaskTrigger -AtStartup
+$CaptureTrigger.Delay = "PT3M"
+Register-ScheduledTask `
+    -TaskName "NetGuard Capture Engines" `
+    -Action $CaptureAction `
+    -Trigger $CaptureTrigger `
+    -Principal $Principal `
+    -Settings $Settings `
+    -Description "Starts DNS/DHCP/inbound packet capture engines (requires Npcap)" `
     -Force | Out-Null
 
 # Weekly threat intel feed update
@@ -129,11 +147,13 @@ if ($Profile -eq "msp" -and $Collector -and $SiteToken) {
     }
 }
 
-# Start everything now (don't wait)
+# Start once now (scheduled task only — avoid duplicate CMD windows)
 Start-ScheduledTask -TaskName "NetGuard Services" -ErrorAction SilentlyContinue
-Start-Process -FilePath $HostBat -WorkingDirectory $InstallDir -WindowStyle Hidden
+Start-Sleep -Seconds 2
+Start-ScheduledTask -TaskName "NetGuard Capture Engines" -ErrorAction SilentlyContinue
 
 Write-Host "[*] NetGuard auto-start registered"
 Write-Host "    Boot task:     NetGuard Services (2 min after startup)"
+Write-Host "    Capture task:  NetGuard Capture Engines (3 min after startup, needs Npcap)"
 Write-Host "    Database:      $DbPath"
 Write-Host "    Install dir:   $InstallDir"

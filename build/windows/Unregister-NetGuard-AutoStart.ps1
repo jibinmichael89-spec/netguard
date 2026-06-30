@@ -14,6 +14,7 @@ function Remove-ScheduledTaskIfExists([string]$TaskName) {
 
 $TaskNames = @(
     "NetGuard Services",
+    "NetGuard Capture Engines",
     "NetGuard Threat Intel",
     "NetGuard MSP Heartbeat"
 )

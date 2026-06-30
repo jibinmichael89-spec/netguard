@@ -89,6 +89,13 @@ begin
     ExpandConstant('{app}\Register-NetGuard-AutoStart.ps1') +
     '" -InstallDir "' + ExpandConstant('{app}') + '" -Profile home',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  if ResultCode = 0 then
+    MsgBox(
+      'NetGuard is installed.' + #13#10 + #13#10 +
+      'For DNS, Rogue DHCP, and Inbound monitoring on Windows, install Npcap:' + #13#10 +
+      'https://npcap.com' + #13#10 + #13#10 +
+      'Use default Npcap options, then open NetGuard from the Start Menu.',
+      mbInformation, MB_OK);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

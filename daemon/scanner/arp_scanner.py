@@ -25,6 +25,12 @@ from scapy.all import ARP, Ether, srp
 # Scan interval in seconds between network sweeps
 SCAN_INTERVAL_SECONDS = 30
 
+
+def _subprocess_creationflags() -> int:
+    if sys.platform == "win32":
+        return getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+    return 0
+
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 if getattr(sys, "frozen", False):
@@ -108,6 +114,7 @@ def _detect_local_ip() -> str:
                 text=True,
                 timeout=10,
                 check=False,
+                creationflags=_subprocess_creationflags(),
             )
             for line in result.stdout.splitlines():
                 if "IPv4" in line and ":" in line:
@@ -364,6 +371,7 @@ def _read_windows_arp_table(network: ipaddress.IPv4Network) -> list[dict]:
         text=True,
         timeout=15,
         check=False,
+        creationflags=_subprocess_creationflags(),
     )
 
     devices: list[dict] = []
@@ -399,6 +407,7 @@ def _ping_host(ip: str) -> None:
             capture_output=True,
             timeout=3,
             check=False,
+            creationflags=_subprocess_creationflags(),
         )
     else:
         subprocess.run(
@@ -421,6 +430,7 @@ def _subnet_ping_sweep(local_ip: str) -> None:
                 capture_output=True,
                 timeout=3,
                 check=False,
+                creationflags=_subprocess_creationflags(),
             )
         else:
             subprocess.run(
