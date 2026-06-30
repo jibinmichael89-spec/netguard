@@ -53,6 +53,13 @@ Source: "scripts\Start-NetGuard-Services.ps1"; DestDir: "{app}"; Flags: ignoreve
 Source: "scripts\Start-NetGuard-Engine.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "scripts\Verify-NetGuard-Windows.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "scripts\Repair-NetGuard-Windows.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "build\windows\Install-Npcap.ps1"; DestDir: "{app}"; Flags: ignoreversion
+#ifexist "build\prerequisites\npcap-oem.exe"
+Source: "build\prerequisites\npcap-oem.exe"; DestDir: "{tmp}"; DestName: "npcap-oem.exe"; Flags: deleteafterinstall
+#endif
+#ifexist "build\prerequisites\npcap-installer.exe"
+Source: "build\prerequisites\npcap-installer.exe"; DestDir: "{tmp}"; DestName: "npcap-installer.exe"; Flags: deleteafterinstall
+#endif
 Source: "install\profiles\windows-home\netguard.env"; DestDir: "{app}"; Flags: ignoreversion
 Source: "install\profiles\windows-msp\netguard.env"; DestDir: "{app}"; DestName: "netguard-msp.env.example"; Flags: ignoreversion
 Source: "dist\README.txt"; DestDir: "{app}"; Flags: ignoreversion
@@ -73,6 +80,34 @@ Type: files; Name: "{app}\netguard.db"
 [Code]
 #include "NetGuard-UninstallCode.iss"
 
+procedure InstallBundledNpcap();
+var
+  ResultCode: Integer;
+begin
+  if FileExists(ExpandConstant('{pf}\Npcap\NPFInstall.exe')) or
+     FileExists(ExpandConstant('{pf}\Npcap\wpcap.dll')) then
+    Exit;
+
+  if (not FileExists(ExpandConstant('{tmp}\npcap-oem.exe'))) and
+     (not FileExists(ExpandConstant('{tmp}\npcap-installer.exe'))) then
+    Exit;
+
+  Exec('powershell.exe',
+    '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' +
+    ExpandConstant('{app}\Install-Npcap.ps1') + '" -PrereqDir "' +
+    ExpandConstant('{tmp}') + '"',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+  if (ResultCode <> 0) and
+     (not FileExists(ExpandConstant('{pf}\Npcap\NPFInstall.exe'))) and
+     (not FileExists(ExpandConstant('{pf}\Npcap\wpcap.dll'))) then
+    MsgBox(
+      'NetGuard could not install the Npcap packet capture driver.' + #13#10 + #13#10 +
+      'DNS, Rogue DHCP, and Inbound monitoring need Npcap.' + #13#10 +
+      'Install from https://npcap.com then run Repair from the NetGuard folder.',
+      mbError, MB_OK);
+end;
+
 procedure RegisterAutoStartTasks();
 var
   ResultCode: Integer;
@@ -89,19 +124,15 @@ begin
     ExpandConstant('{app}\Register-NetGuard-AutoStart.ps1') +
     '" -InstallDir "' + ExpandConstant('{app}') + '" -Profile home',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  if ResultCode = 0 then
-    MsgBox(
-      'NetGuard is installed.' + #13#10 + #13#10 +
-      'For DNS, Rogue DHCP, and Inbound monitoring on Windows, install Npcap:' + #13#10 +
-      'https://npcap.com' + #13#10 + #13#10 +
-      'Use default Npcap options, then open NetGuard from the Start Menu.',
-      mbInformation, MB_OK);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
+  begin
+    InstallBundledNpcap();
     RegisterAutoStartTasks();
+  end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

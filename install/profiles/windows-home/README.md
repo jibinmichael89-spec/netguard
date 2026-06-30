@@ -5,15 +5,16 @@ For one household PC running NetGuard locally. No MSP central reporting.
 ## Requirements
 
 - Windows 10/11 (64-bit)
-- [Npcap](https://npcap.com) installed
-- Npcap installed (required for DNS/DHCP/inbound packet capture)
 - Administrator rights for install
+- **Npcap** is bundled in `NetGuard-Setup.exe` (installed automatically)
 
-## Install
+## Install (customers)
 
-1. Build or download NetGuard exes (see repo `build/exe/` or run `build\windows\build-installer.ps1`).
+1. Run **`NetGuard-Setup.exe`** as Administrator.
+2. Complete the wizard (Npcap installs automatically if needed).
+3. Open **http://localhost:8000** from the Start Menu shortcut.
 
-2. From an **Administrator** PowerShell in the repo root:
+## Install (developers)
 
 ```powershell
 cd C:\Users\jibin\netguard
