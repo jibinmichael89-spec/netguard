@@ -119,3 +119,54 @@ def notify_alert(
         send_email(f"NetGuard {severity}: {alert_type}", message, db_path)
     except OSError:
         pass
+
+
+def notify_playbook(
+    playbook_name: str,
+    device_ip: str,
+    body: str,
+    db_path: str | None = None,
+) -> None:
+    """Send playbook notifications unconditionally (bypasses severity thresholds)."""
+    message = (
+        f"NetGuard automated playbook: {playbook_name}\n"
+        f"Device: {device_ip}\n\n"
+        f"{body}"
+    )
+    try:
+        send_telegram(message, db_path)
+    except OSError:
+        pass
+    try:
+        send_email(f"NetGuard Playbook: {playbook_name}", message, db_path)
+    except OSError:
+        pass
+
+
+def send_incident_report_email(
+    subject: str,
+    report_text: str,
+    db_path: str | None = None,
+) -> bool:
+    """Deliver a structured incident report suitable for MSP ticketing workflows."""
+    host = _config_value(db_path, "smtp_host")
+    port = int(_config_value(db_path, "smtp_port") or "587")
+    user = _config_value(db_path, "smtp_user")
+    password = _config_value(db_path, "smtp_password")
+    sender = _config_value(db_path, "smtp_from") or user
+    recipient = _config_value(db_path, "alert_email_to")
+    if not host or not recipient:
+        return False
+
+    msg = EmailMessage()
+    msg["Subject"] = subject[:200]
+    msg["From"] = sender or "netguard@localhost"
+    msg["To"] = recipient
+    msg.set_content(report_text)
+
+    with smtplib.SMTP(host, port, timeout=20) as smtp:
+        if user and password:
+            smtp.starttls()
+            smtp.login(user, password)
+        smtp.send_message(msg)
+    return True

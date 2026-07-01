@@ -11,3 +11,6 @@ requests>=2.31.0
 
 # Encrypted password vault
 cryptography>=42.0.0
+
+# Compliance report PDF generation
+fpdf2>=2.7.0

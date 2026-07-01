@@ -36,8 +36,15 @@ DB_PATH = resolve_db_path(PROJECT_ROOT)
 
 DEFAULT_LOCAL_SUBNET = "192.168.1.0/24"
 DEDUP_WINDOW_SECONDS = 300
+HOURLY_ALERT_CAP = 5
+HOURLY_WINDOW_SECONDS = 3600
+DISTRIBUTED_SCAN_WINDOW_SECONDS = 600
+DISTRIBUTED_SCAN_MIN_SOURCES = 3
 DEVICE_CACHE_SECONDS = 30
 HEARTBEAT_INTERVAL_SECONDS = 60
+
+ALERT_PATTERN_SINGLE = "single_source"
+ALERT_PATTERN_DISTRIBUTED = "distributed_scan"
 
 TCP_SYN_BPF_FILTER = "tcp[tcpflags] & tcp-syn != 0 and tcp[tcpflags] & tcp-ack = 0"
 
@@ -148,6 +155,10 @@ def init_database(db_path: str) -> None:
         cursor.execute("ALTER TABLE alerts ADD COLUMN source_port INTEGER")
     if "destination_port" not in columns:
         cursor.execute("ALTER TABLE alerts ADD COLUMN destination_port INTEGER")
+    if "suppressed_count" not in columns:
+        cursor.execute("ALTER TABLE alerts ADD COLUMN suppressed_count INTEGER DEFAULT 0")
+    if "alert_pattern" not in columns:
+        cursor.execute("ALTER TABLE alerts ADD COLUMN alert_pattern TEXT")
 
     conn.commit()
     conn.close()
@@ -199,6 +210,69 @@ def recent_alert_exists(
     return exists
 
 
+def hourly_alert_count(db_path: str, device_ip: str, cutoff_iso: str) -> int:
+    """Count inbound_connection alert rows for a device in the rolling hourly window."""
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT COUNT(*) FROM alerts
+        WHERE alert_type = 'inbound_connection'
+          AND device_ip = ?
+          AND timestamp >= ?
+        """,
+        (device_ip, cutoff_iso),
+    )
+    count = int(cursor.fetchone()[0])
+    conn.close()
+    return count
+
+
+def distinct_recent_source_ips(
+    db_path: str,
+    device_ip: str,
+    cutoff_iso: str,
+) -> set[str]:
+    """Return distinct external source IPs seen on a device within a time window."""
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT DISTINCT source_ip FROM alerts
+        WHERE alert_type = 'inbound_connection'
+          AND device_ip = ?
+          AND source_ip IS NOT NULL
+          AND timestamp >= ?
+        """,
+        (device_ip, cutoff_iso),
+    )
+    ips = {row[0] for row in cursor.fetchall() if row[0]}
+    conn.close()
+    return ips
+
+
+def increment_suppressed_count(db_path: str, device_ip: str) -> None:
+    """Bump suppressed_count on the most recent inbound alert for this device."""
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE alerts
+        SET suppressed_count = COALESCE(suppressed_count, 0) + 1
+        WHERE id = (
+            SELECT id FROM alerts
+            WHERE alert_type = 'inbound_connection'
+              AND device_ip = ?
+            ORDER BY timestamp DESC
+            LIMIT 1
+        )
+        """,
+        (device_ip,),
+    )
+    conn.commit()
+    conn.close()
+
+
 def insert_inbound_alert(
     db_path: str,
     timestamp: str,
@@ -207,6 +281,7 @@ def insert_inbound_alert(
     source_port: int,
     destination_port: int,
     description: str,
+    alert_pattern: str,
 ) -> None:
     """Persist an inbound connection alert."""
     conn = sqlite3.connect(db_path)
@@ -221,9 +296,11 @@ def insert_inbound_alert(
             source_ip,
             source_port,
             destination_port,
-            description
+            description,
+            alert_pattern,
+            suppressed_count
         )
-        VALUES (?, 'CRITICAL', 'inbound_connection', ?, ?, ?, ?, ?)
+        VALUES (?, 'CRITICAL', 'inbound_connection', ?, ?, ?, ?, ?, ?, 0)
         """,
         (
             timestamp,
@@ -232,6 +309,7 @@ def insert_inbound_alert(
             source_port,
             destination_port,
             description,
+            alert_pattern,
         ),
     )
     conn.commit()
@@ -251,8 +329,37 @@ class InboundDetectorState:
         self.device_ips: set[str] = set()
         self.device_ips_loaded_at = 0.0
         self.recent_alerts: dict[tuple[str, int, str, int], float] = {}
+        self.device_source_ips: dict[str, list[tuple[str, float]]] = {}
         self.lock = threading.Lock()
         self.last_detection_at = time.time()
+
+    def record_source_ip(self, device_ip: str, source_ip: str, now: float) -> set[str]:
+        """Track source IPs per device and return distinct IPs in the scan window."""
+        with self.lock:
+            entries = self.device_source_ips.setdefault(device_ip, [])
+            entries.append((source_ip, now))
+            cutoff = now - DISTRIBUTED_SCAN_WINDOW_SECONDS
+            self.device_source_ips[device_ip] = [
+                (ip, seen_at) for ip, seen_at in entries if seen_at >= cutoff
+            ]
+            return {ip for ip, _ in self.device_source_ips[device_ip]}
+
+    def resolve_alert_pattern(
+        self,
+        device_ip: str,
+        source_ip: str,
+        now: float,
+    ) -> str:
+        """Classify repeated single-source probes vs broad distributed scans."""
+        scan_cutoff = (
+            datetime.now(timezone.utc) - timedelta(seconds=DISTRIBUTED_SCAN_WINDOW_SECONDS)
+        ).isoformat()
+        db_sources = distinct_recent_source_ips(self.db_path, device_ip, scan_cutoff)
+        memory_sources = self.record_source_ip(device_ip, source_ip, now)
+        distinct_sources = db_sources | memory_sources | {source_ip}
+        if len(distinct_sources) >= DISTRIBUTED_SCAN_MIN_SOURCES:
+            return ALERT_PATTERN_DISTRIBUTED
+        return ALERT_PATTERN_SINGLE
 
     def refresh_device_ips(self, force: bool = False) -> None:
         """Reload monitored device IPs from the database on a timer."""
@@ -317,8 +424,18 @@ def print_detection_table(
     device_ip: str,
     destination_port: int,
     timestamp: str,
+    *,
+    suppressed: bool = False,
+    alert_pattern: str | None = None,
 ) -> None:
     """Print a formatted console table row for a detected inbound attempt."""
+    label = "SUPPRESSED" if suppressed else "CRITICAL"
+    pattern_suffix = ""
+    if alert_pattern == ALERT_PATTERN_DISTRIBUTED:
+        pattern_suffix = " [distributed_scan]"
+    elif alert_pattern == ALERT_PATTERN_SINGLE:
+        pattern_suffix = " [single_source]"
+
     print()
     print("-" * 88)
     print(f"  {'Source':<24} {'Destination':<24} {'Port':<8} {'Time'}")
@@ -328,9 +445,14 @@ def print_detection_table(
     )
     print("-" * 88)
     print(
-        f"[CRITICAL] [Inbound] {source_ip}:{source_port} -> "
+        f"[{label}] [Inbound]{pattern_suffix} {source_ip}:{source_port} -> "
         f"{device_ip}:{destination_port} {timestamp}"
     )
+    if suppressed:
+        print(
+            f"  Hourly alert cap ({HOURLY_ALERT_CAP}/device) reached — "
+            "logged only; suppressed_count incremented on latest alert."
+        )
     print()
 
 
@@ -368,7 +490,26 @@ def handle_syn_packet(packet, state: InboundDetectorState) -> None:
         f"to port {destination_port}"
     )
 
+    hourly_cutoff = (
+        datetime.now(timezone.utc) - timedelta(seconds=HOURLY_WINDOW_SECONDS)
+    ).isoformat()
+
     try:
+        if hourly_alert_count(state.db_path, destination_ip, hourly_cutoff) >= HOURLY_ALERT_CAP:
+            state.record_source_ip(destination_ip, source_ip, now)
+            increment_suppressed_count(state.db_path, destination_ip)
+            state.mark_alerted(dedup_key, now)
+            print_detection_table(
+                source_ip,
+                source_port,
+                destination_ip,
+                destination_port,
+                timestamp,
+                suppressed=True,
+            )
+            return
+
+        alert_pattern = state.resolve_alert_pattern(destination_ip, source_ip, now)
         insert_inbound_alert(
             state.db_path,
             timestamp,
@@ -377,6 +518,7 @@ def handle_syn_packet(packet, state: InboundDetectorState) -> None:
             source_port,
             destination_port,
             description,
+            alert_pattern,
         )
         state.mark_alerted(dedup_key, now)
         print_detection_table(
@@ -385,6 +527,7 @@ def handle_syn_packet(packet, state: InboundDetectorState) -> None:
             destination_ip,
             destination_port,
             timestamp,
+            alert_pattern=alert_pattern,
         )
     except sqlite3.Error as exc:
         print(f"[!] Database error while recording inbound alert: {exc}")
@@ -429,6 +572,11 @@ def main() -> None:
     print(f"Capture filter:   {TCP_SYN_BPF_FILTER}")
     print(f"Capture interface:{capture_iface or 'default'}")
     print(f"Dedup window:     {DEDUP_WINDOW_SECONDS}s")
+    print(f"Hourly alert cap: {HOURLY_ALERT_CAP} per device (rolling {HOURLY_WINDOW_SECONDS // 60} min)")
+    print(
+        f"Scan pattern:     {DISTRIBUTED_SCAN_MIN_SOURCES}+ distinct sources in "
+        f"{DISTRIBUTED_SCAN_WINDOW_SECONDS // 60} min => distributed_scan"
+    )
     print("[!] Requires administrator/root privileges for packet capture.")
     print("Press Ctrl+C to stop.\n")
 

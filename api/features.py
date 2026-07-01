@@ -10,7 +10,8 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 if getattr(sys, "frozen", False):
@@ -42,6 +43,7 @@ def _load_enforcement_module(module_name: str):
 def _router_manager_cls():
     return _load_enforcement_module("router_manager").RouterManager
 
+from api_key import require_api_key
 from schema_extensions import apply_schema_extensions, is_alert_suppressed, log_device_event
 
 router = APIRouter(tags=["features"])
@@ -64,12 +66,6 @@ def _conn() -> sqlite3.Connection:
 
 def _rows(rows: list[sqlite3.Row]) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
-
-
-def _optional_api_key(x_api_key: str | None = Header(default=None)) -> None:
-    required = os.environ.get("NETGUARD_API_KEY", "").strip()
-    if required and x_api_key != required:
-        raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
 class SuppressionRequest(BaseModel):
@@ -112,6 +108,70 @@ class RouterConfigUpdate(BaseModel):
     router_user: str | None = None
     router_password: str | None = None
     router_token: str | None = None
+
+
+class SyslogConfigUpdate(BaseModel):
+    enabled: bool | None = None
+    host: str | None = None
+    port: int | None = Field(default=None, ge=1, le=65535)
+    protocol: Literal["udp", "tcp"] | None = None
+
+
+def _syslog_settings_dict() -> dict[str, Any]:
+    from netguard_env import env_bool, load_and_apply_env_file, netguard_env_file_path
+
+    load_and_apply_env_file()
+    protocol = os.environ.get("NETGUARD_SYSLOG_PROTOCOL", "udp").strip().lower()
+    if protocol not in {"udp", "tcp"}:
+        protocol = "udp"
+    try:
+        port = int(os.environ.get("NETGUARD_SYSLOG_PORT", "514"))
+    except ValueError:
+        port = 514
+    host = os.environ.get("NETGUARD_SYSLOG_HOST", "").strip()
+    enabled = env_bool(os.environ.get("NETGUARD_SYSLOG_ENABLED"))
+    return {
+        "enabled": enabled,
+        "host": host,
+        "port": port,
+        "protocol": protocol,
+        "env_file": netguard_env_file_path(),
+        "configured": enabled and bool(host),
+    }
+
+
+def _save_syslog_config(body: SyslogConfigUpdate) -> list[str]:
+    from netguard_env import env_bool, load_and_apply_env_file, write_env_file_values
+
+    load_and_apply_env_file()
+    updates: dict[str, str] = {}
+    if body.enabled is not None:
+        updates["NETGUARD_SYSLOG_ENABLED"] = "true" if body.enabled else "false"
+    if body.host is not None:
+        updates["NETGUARD_SYSLOG_HOST"] = body.host.strip()
+    if body.port is not None:
+        updates["NETGUARD_SYSLOG_PORT"] = str(body.port)
+    if body.protocol is not None:
+        updates["NETGUARD_SYSLOG_PROTOCOL"] = body.protocol.lower()
+
+    if not updates:
+        return []
+
+    effective_enabled = body.enabled
+    if effective_enabled is None:
+        effective_enabled = env_bool(os.environ.get("NETGUARD_SYSLOG_ENABLED"))
+    effective_host = body.host
+    if effective_host is None:
+        effective_host = os.environ.get("NETGUARD_SYSLOG_HOST", "")
+
+    if effective_enabled and not effective_host.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Syslog host is required when export is enabled",
+        )
+
+    write_env_file_values(updates)
+    return list(updates.keys())
 
 
 def _save_router_config(body: RouterConfigUpdate) -> list[str]:
@@ -222,7 +282,7 @@ def _restart_api_windows() -> dict:
     }
 
 
-@router.put("/alerts/{alert_id}/acknowledge", dependencies=[Depends(_optional_api_key)])
+@router.put("/alerts/{alert_id}/acknowledge", dependencies=[Depends(require_api_key)])
 def acknowledge_alert(alert_id: int) -> dict:
     conn = _conn()
     now = datetime.now(timezone.utc).isoformat()
@@ -243,7 +303,7 @@ def acknowledge_alert(alert_id: int) -> dict:
     return {"success": True, "alert_id": alert_id}
 
 
-@router.put("/alerts/{alert_id}/false-positive", dependencies=[Depends(_optional_api_key)])
+@router.put("/alerts/{alert_id}/false-positive", dependencies=[Depends(require_api_key)])
 def mark_false_positive(alert_id: int) -> dict:
     conn = _conn()
     now = datetime.now(timezone.utc).isoformat()
@@ -264,7 +324,7 @@ def mark_false_positive(alert_id: int) -> dict:
     return {"success": True, "alert_id": alert_id}
 
 
-@router.post("/alerts/suppressions", dependencies=[Depends(_optional_api_key)])
+@router.post("/alerts/suppressions", dependencies=[Depends(require_api_key)])
 def create_suppression(body: SuppressionRequest) -> dict:
     conn = _conn()
     now = datetime.now(timezone.utc)
@@ -308,7 +368,7 @@ def list_pending_devices() -> dict:
     return {"count": len(rows), "devices": _rows(rows)}
 
 
-@router.put("/devices/{device_ip}/approve", dependencies=[Depends(_optional_api_key)])
+@router.put("/devices/{device_ip}/approve", dependencies=[Depends(require_api_key)])
 def approve_device(device_ip: str) -> dict:
     conn = _conn()
     cursor = conn.cursor()
@@ -328,7 +388,7 @@ def approve_device(device_ip: str) -> dict:
     return {"success": True, "device_ip": device_ip, "approval_status": "approved"}
 
 
-@router.put("/devices/{device_ip}/reject", dependencies=[Depends(_optional_api_key)])
+@router.put("/devices/{device_ip}/reject", dependencies=[Depends(require_api_key)])
 def reject_device(device_ip: str) -> dict:
     conn = _conn()
     cursor = conn.cursor()
@@ -348,7 +408,7 @@ def reject_device(device_ip: str) -> dict:
     return {"success": True, "device_ip": device_ip, "approval_status": "rejected"}
 
 
-@router.put("/devices/{device_ip}/profile", dependencies=[Depends(_optional_api_key)])
+@router.put("/devices/{device_ip}/profile", dependencies=[Depends(require_api_key)])
 def update_device_profile(device_ip: str, body: ProfileUpdate) -> dict:
     conn = _conn()
     cursor = conn.cursor()
@@ -468,7 +528,7 @@ def device_timeline(device_ip: str, limit: int = 100) -> dict:
     return {"device_ip": device_ip, "count": len(events[:limit]), "events": events[:limit]}
 
 
-@router.post("/domains/block", dependencies=[Depends(_optional_api_key)])
+@router.post("/domains/block", dependencies=[Depends(require_api_key)])
 def block_domain_endpoint(body: BlockDomainRequest) -> dict:
     from detection.threat_intel import block_domain
 
@@ -497,7 +557,7 @@ def threat_intel_status() -> dict:
     return {"domain_count": count, "last_updated": last}
 
 
-@router.post("/threat-intel/update", dependencies=[Depends(_optional_api_key)])
+@router.post("/threat-intel/update", dependencies=[Depends(require_api_key)])
 def threat_intel_update() -> dict:
     from detection.threat_intel import update_threat_intel
 
@@ -515,7 +575,7 @@ def list_policy_violations() -> dict:
     return {"count": len(rows), "violations": _rows(rows)}
 
 
-@router.post("/policies/evaluate", dependencies=[Depends(_optional_api_key)])
+@router.post("/policies/evaluate", dependencies=[Depends(require_api_key)])
 def run_policy_evaluation() -> dict:
     from detection.policy_engine import evaluate_policies
 
@@ -567,7 +627,7 @@ def get_notification_config() -> dict:
     return {"config": config}
 
 
-@router.put("/notifications/config", dependencies=[Depends(_optional_api_key)])
+@router.put("/notifications/config", dependencies=[Depends(require_api_key)])
 def update_notification_config(body: NotificationConfigUpdate) -> dict:
     conn = _conn()
     mapping = body.model_dump(exclude_none=True)
@@ -584,7 +644,30 @@ def update_notification_config(body: NotificationConfigUpdate) -> dict:
     return {"success": True, "updated_keys": list(mapping.keys())}
 
 
-@router.post("/enforcement/block/{device_ip}", dependencies=[Depends(_optional_api_key)])
+@router.get("/settings/syslog")
+def get_syslog_settings() -> dict:
+    """
+    Return syslog/SIEM export settings from netguard.env.
+
+    Used by the dashboard to configure RFC 5424 alert forwarding without
+    editing the env file manually.
+    """
+    return _syslog_settings_dict()
+
+
+@router.put("/settings/syslog", dependencies=[Depends(require_api_key)])
+def update_syslog_settings(body: SyslogConfigUpdate) -> dict:
+    """
+    Update syslog export settings in netguard.env.
+
+    Changes take effect on the next poll cycle of the syslog export daemon.
+    Requires syslog-export service (or syslog-export.exe on Windows) to be running.
+    """
+    updated = _save_syslog_config(body)
+    return {"success": True, "updated_keys": updated, **_syslog_settings_dict()}
+
+
+@router.post("/enforcement/block/{device_ip}", dependencies=[Depends(require_api_key)])
 def enforce_block(device_ip: str) -> dict:
     conn = _conn()
     row = conn.execute(
@@ -606,7 +689,7 @@ def enforce_block(device_ip: str) -> dict:
     }
 
 
-@router.post("/enforcement/unblock/{device_ip}", dependencies=[Depends(_optional_api_key)])
+@router.post("/enforcement/unblock/{device_ip}", dependencies=[Depends(require_api_key)])
 def enforce_unblock(device_ip: str) -> dict:
     conn = _conn()
     row = conn.execute(
@@ -631,7 +714,7 @@ def enforce_unblock(device_ip: str) -> dict:
     }
 
 
-@router.post("/enforcement/pause/{device_ip}", dependencies=[Depends(_optional_api_key)])
+@router.post("/enforcement/pause/{device_ip}", dependencies=[Depends(require_api_key)])
 def enforce_pause(device_ip: str, minutes: int = 60) -> dict:
     conn = _conn()
     row = conn.execute(
@@ -655,7 +738,7 @@ def router_settings() -> dict:
     return _router_manager_cls().router_config_summary(_DB_PATH)
 
 
-@router.put("/settings/router", dependencies=[Depends(_optional_api_key)])
+@router.put("/settings/router", dependencies=[Depends(require_api_key)])
 def update_router_settings(body: RouterConfigUpdate) -> dict:
     updated = _save_router_config(body)
     summary = _router_manager_cls().router_config_summary(_DB_PATH)
@@ -666,7 +749,7 @@ def update_router_settings(body: RouterConfigUpdate) -> dict:
     }
 
 
-@router.post("/settings/router/test", dependencies=[Depends(_optional_api_key)])
+@router.post("/settings/router/test", dependencies=[Depends(require_api_key)])
 def test_router_connection() -> dict:
     mgr = _router_manager_cls()(_DB_PATH)
     if not mgr.router_type or not mgr.router_url:
@@ -725,7 +808,7 @@ def test_router_connection() -> dict:
         return {"success": False, "detail": str(exc)}
 
 
-@router.post("/settings/restart-api", dependencies=[Depends(_optional_api_key)])
+@router.post("/settings/restart-api", dependencies=[Depends(require_api_key)])
 def restart_api_service() -> dict:
     import subprocess
 
@@ -768,7 +851,7 @@ def restart_api_service() -> dict:
     }
 
 
-@router.post("/notifications/test", dependencies=[Depends(_optional_api_key)])
+@router.post("/notifications/test", dependencies=[Depends(require_api_key)])
 def test_notifications() -> dict:
     notify_dir = os.path.join(_features_daemon, "notifications")
     if notify_dir not in sys.path:
@@ -806,7 +889,7 @@ def list_policies() -> dict:
     return {"count": len(policies), "policies": policies}
 
 
-@router.put("/policies/{policy_id}", dependencies=[Depends(_optional_api_key)])
+@router.put("/policies/{policy_id}", dependencies=[Depends(require_api_key)])
 def update_policy(policy_id: str, body: PolicyToggle) -> dict:
     conn = _conn()
     conn.execute(
@@ -821,7 +904,7 @@ def update_policy(policy_id: str, body: PolicyToggle) -> dict:
     return {"success": True, "policy_id": policy_id, "enabled": body.enabled}
 
 
-@router.post("/reports/weekly/send", dependencies=[Depends(_optional_api_key)])
+@router.post("/reports/weekly/send", dependencies=[Depends(require_api_key)])
 def send_weekly_report_endpoint() -> dict:
     reports_dir = os.path.join(_features_daemon, "reports")
     if reports_dir not in sys.path:
@@ -830,6 +913,47 @@ def send_weekly_report_endpoint() -> dict:
 
     sent = send_weekly_report(_DB_PATH)
     return {"success": sent, "message": "Weekly report emailed" if sent else "SMTP not configured"}
+
+
+@router.post("/reports/compliance/generate", dependencies=[Depends(require_api_key)])
+def generate_compliance_report_endpoint(
+    start_date: str | None = Query(
+        default=None,
+        description="Reporting period start (YYYY-MM-DD). Defaults to 30 days before end.",
+    ),
+    end_date: str | None = Query(
+        default=None,
+        description="Reporting period end (YYYY-MM-DD). Defaults to today (UTC).",
+    ),
+) -> Response:
+    """Generate a GDPR Article 32 compliance evidence PDF for download."""
+    reports_dir = os.path.join(_features_daemon, "reports")
+    if reports_dir not in sys.path:
+        sys.path.insert(0, reports_dir)
+    from compliance_report import generate_compliance_report, resolve_report_period
+
+    try:
+        _, _, pdf_bytes = generate_compliance_report(
+            _DB_PATH,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Compliance report generation failed: {exc}",
+        ) from exc
+
+    period_start, period_end = resolve_report_period(start_date, end_date)
+    filename = (
+        f"netguard-compliance-"
+        f"{period_start.strftime('%Y%m%d')}-{period_end.strftime('%Y%m%d')}.pdf"
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 def filter_visible_alerts(alerts: list[dict]) -> list[dict]:

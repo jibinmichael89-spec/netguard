@@ -2,6 +2,35 @@
 NetGuard REST API
 FastAPI server that exposes device data and security alerts
 stored by the ARP scanner in the shared SQLite database.
+
+# ---------------------------------------------------------------------------
+# Authentication model (single-user LAN dashboard)
+# ---------------------------------------------------------------------------
+# NETGUARD_API_KEY is required for every mutating request (POST, PUT, DELETE).
+# Pass it as the X-API-Key header. The key is auto-generated on first API
+# start if missing and written to the platform netguard.env file.
+#
+# The following GET routes stay open without a key so the bundled dashboard
+# can poll read-only data on localhost/LAN without bootstrapping auth first:
+#   /, /favicon.svg, /icons.svg          — static dashboard assets
+#   /health, /api, /system/info           — install probes and platform hint
+#   /devices, /devices/new, /devices/{ip} — device inventory
+#   /risk/summary, /devices/{ip}/risk     — risk scoring views
+#   /reference/cve/{port}                 — CVE reference text
+#   /alerts, /alerts/security*            — alert lists
+#   /inbound/{device_ip}                  — inbound activity
+#   /dhcp/servers                         — rogue DHCP inventory
+#   /dns, /dns/*                          — DNS activity views
+#   /ports, /ports/*                      — open port views
+#   /monitoring/status                    — detector health panel
+#   /notifications/config, /settings/router, /settings/syslog, /policies, /threat-intel/status
+#   /alerts/suppressions, /domains/blocked, /devices/pending-approval
+#   /reports/summary, /devices/{ip}/timeline, /msp/* (GET only)
+#
+# POST /reports/compliance/generate requires X-API-Key (GDPR Art. 32 PDF download).
+#
+# GET /settings/api-key requires a valid X-API-Key (view/copy key in Settings).
+# All POST/PUT/DELETE routes (including features router and vault) require X-API-Key.
 """
 
 import json
@@ -71,7 +100,7 @@ if _api_module_dir not in sys.path:
 
 import features as feature_routes
 import msp as msp_routes
-from features import _optional_api_key
+from api_key import ensure_api_key_configured, get_api_key, require_api_key
 
 DB_PATH = resolve_db_path(PROJECT_ROOT if not getattr(sys, "frozen", False) else None)
 PORT_INSTRUCTIONS_PATH = os.path.join(
@@ -158,8 +187,15 @@ _ensure_stdio_for_frozen()
 
 app = FastAPI(
     title="NetGuard API",
-    description="Home network security monitor — device inventory and alerts",
-    version="1.0.0",
+    description=(
+        "REST API for the NetGuard home-network security monitor. "
+        "Provides device inventory, risk scores, DNS and port visibility, "
+        "security alerts, and enforcement actions. "
+        "Read endpoints are open on the LAN; write endpoints require the "
+        "`X-API-Key` header (see Settings → API key). "
+        "Interactive documentation: `/docs` (Swagger UI) and `/redoc`."
+    ),
+    version="1.2.0",
 )
 
 app.add_middleware(
@@ -190,7 +226,8 @@ def _preload_risk_rules() -> None:
 
 @app.on_event("startup")
 def _startup() -> None:
-    """Load risk rules and register feature routes."""
+    """Ensure API key, load risk rules, and register feature routes."""
+    ensure_api_key_configured()
     _preload_risk_rules()
     feature_routes.configure(DB_PATH, get_db_connection)
     msp_routes.configure(DB_PATH, get_db_connection)
@@ -1291,10 +1328,13 @@ def system_info() -> dict:
 @app.get("/devices")
 def list_devices(include_blocked: bool = Query(default=False)) -> dict:
     """
-    Return all devices discovered by the ARP scanner.
+    List all devices discovered by the ARP scanner.
 
-    Blocked devices are excluded by default. Pass include_blocked=true
-    to include blocked devices for admin/recovery purposes.
+    Integration use: poll this endpoint for a live asset inventory (IP, MAC,
+    vendor, hostname, risk level, trust/block flags). Blocked devices are
+    hidden unless `include_blocked=true`.
+
+    **Auth:** None (read-only).
     """
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -1316,7 +1356,7 @@ def list_devices(include_blocked: bool = Query(default=False)) -> dict:
     return {"count": len(devices), "devices": devices}
 
 
-@app.put("/devices/{device_ip}/tag")
+@app.put("/devices/{device_ip}/tag", dependencies=[Depends(require_api_key)])
 def update_device_tag(device_ip: str, request: DeviceTagRequest) -> dict:
     """
     Set or update a user-defined tag for a device by IP address.
@@ -1344,7 +1384,7 @@ def update_device_tag(device_ip: str, request: DeviceTagRequest) -> dict:
     }
 
 
-@app.put("/devices/id/{device_id}/trust")
+@app.put("/devices/id/{device_id}/trust", dependencies=[Depends(require_api_key)])
 def update_device_trust_by_id(device_id: int, request: DeviceTrustRequest) -> dict:
     """Mark a device as trusted or remove trusted status by device id."""
     conn = get_db_connection()
@@ -1367,7 +1407,7 @@ def update_device_trust_by_id(device_id: int, request: DeviceTrustRequest) -> di
     }
 
 
-@app.put("/devices/id/{device_id}/block")
+@app.put("/devices/id/{device_id}/block", dependencies=[Depends(require_api_key)])
 def update_device_block_by_id(device_id: int, request: DeviceBlockRequest) -> dict:
     """Block or unblock a device by device id."""
     conn = get_db_connection()
@@ -1390,7 +1430,7 @@ def update_device_block_by_id(device_id: int, request: DeviceBlockRequest) -> di
     }
 
 
-@app.put("/devices/{device_ip}/trust")
+@app.put("/devices/{device_ip}/trust", dependencies=[Depends(require_api_key)])
 def update_device_trust(device_ip: str, request: DeviceTrustRequest) -> dict:
     """Mark a device as trusted or remove trusted status."""
     conn = get_db_connection()
@@ -1407,7 +1447,7 @@ def update_device_trust(device_ip: str, request: DeviceTrustRequest) -> dict:
     return update_device_trust_by_id(row[0], request)
 
 
-@app.put("/devices/{device_ip}/block")
+@app.put("/devices/{device_ip}/block", dependencies=[Depends(require_api_key)])
 def update_device_block(device_ip: str, request: DeviceBlockRequest) -> dict:
     """Block or unblock a device on the network."""
     conn = get_db_connection()
@@ -1457,7 +1497,14 @@ def list_new_devices() -> dict:
 
 @app.get("/devices/{device_ip}")
 def get_device(device_ip: str) -> dict:
-    """Return a single device record by IP address."""
+    """
+    Return one device record by IP address.
+
+    Includes fingerprinting, risk score, approval status, and last-seen time.
+    Returns HTTP 404 when the IP is not in the inventory.
+
+    **Auth:** None (read-only).
+    """
     conn = get_db_connection()
     device = _get_device_by_ip(conn, device_ip)
     conn.close()
@@ -1503,7 +1550,15 @@ def get_device_risk(device_ip: str) -> dict:
 
 @app.get("/risk/summary")
 def risk_summary() -> dict:
-    """Return aggregate risk statistics across all discovered devices."""
+    """
+    Network-wide risk statistics for dashboards and SIEM correlation.
+
+    Returns counts per risk level (Critical/High/Medium/Low/None) and the
+    five highest-risk devices with scores. Recompute risk via the risk-scorer
+    daemon if scores are stale.
+
+    **Auth:** None (read-only).
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -1583,10 +1638,14 @@ def get_cve_reference(port: int) -> dict:
 @app.get("/alerts")
 def list_alerts() -> dict:
     """
-    Return security alerts: newly discovered and offline devices.
+    Operational device alerts: newly discovered and offline devices.
 
-    - new_devices: first seen in the last 24 hours
-    - offline_devices: currently marked offline by the scanner
+    This endpoint reports inventory-change alerts (devices first seen in the
+    last 24 hours, and devices currently marked offline). For security
+    incidents (ARP spoof, inbound connections, rogue DHCP, etc.) use
+    `GET /alerts/security`.
+
+    **Auth:** None (read-only).
     """
     cutoff = (
         datetime.now(timezone.utc) - timedelta(hours=NEW_DEVICE_WINDOW_HOURS)
@@ -1635,9 +1694,13 @@ def list_alerts() -> dict:
 @app.get("/alerts/security")
 def list_security_alerts() -> dict:
     """
-    Return all ARP spoof and other security alerts from the alerts table.
+    All security alerts from the `alerts` table (ARP spoof, inbound probes,
+    rogue DHCP, policy violations, threat-intel hits, etc.).
 
-    Ordered by most recent first.
+    False positives, snoozed, and suppressed alerts are filtered out.
+    Ordered newest first. Pair with syslog export or poll for SIEM ingestion.
+
+    **Auth:** None (read-only).
     """
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -1680,17 +1743,22 @@ def list_inbound_attempts(
     limit: int = Query(default=100, ge=1, le=1000),
 ) -> dict:
     """
-    Return inbound connection attempts targeting a specific device.
+    Inbound connection attempts targeting a specific LAN device.
 
-    Reads CRITICAL inbound_connection alerts recorded by the inbound
-    connection detector. Returns an empty list when no attempts exist.
+    Data comes from the inbound-connection detector (`inbound_connection`
+    alerts). Each attempt includes source IP/port, destination port, severity,
+    `alert_pattern` (`single_source` vs `distributed_scan`), and
+    `suppressed_count` when hourly rate limiting applied.
+
+    **Auth:** None (read-only).
     """
     conn = get_db_connection()
     _get_device_by_ip(conn, device_ip)
     cursor = conn.cursor()
     cursor.execute(
         """
-        SELECT source_ip, source_port, destination_port, severity, timestamp, description
+        SELECT source_ip, source_port, destination_port, severity, timestamp, description,
+               suppressed_count, alert_pattern
         FROM alerts
         WHERE alert_type = 'inbound_connection' AND device_ip = ?
         ORDER BY timestamp DESC
@@ -1709,6 +1777,8 @@ def list_inbound_attempts(
             "severity": row["severity"],
             "timestamp": _format_alert_timestamp(row["timestamp"]),
             "description": row["description"],
+            "suppressed_count": int(row["suppressed_count"] or 0),
+            "alert_pattern": row["alert_pattern"] or "single_source",
         }
         for row in rows
     ]
@@ -1762,10 +1832,13 @@ def list_dns_devices(suspicious_only: bool = Query(default=False)) -> dict:
 @app.get("/dns")
 def list_dns_queries() -> dict:
     """
-    Return the last 100 DNS queries captured by the DNS monitor.
+    Recent DNS queries captured on the LAN (default: last 100).
 
-    Each query includes matched device details (hostname, MAC, vendor) when
-    the source IP is known in the devices table.
+    Each row includes query domain, timestamp, threat-intel flags, and matched
+    device metadata when the source IP is known. Use `/dns/suspicious` for
+    flagged queries only, or `/dns/summary` for per-device category totals.
+
+    **Auth:** None (read-only).
     """
     conn = get_db_connection()
     queries = _fetch_dns_queries(conn, limit=100)
@@ -1923,7 +1996,7 @@ def list_ports_for_device(device_ip: str) -> dict:
     return {"device_ip": device_ip, "count": len(rows), "ports": rows}
 
 
-@app.post("/vault/unlock")
+@app.post("/vault/unlock", dependencies=[Depends(require_api_key)])
 def vault_unlock(request: VaultUnlockRequest) -> dict:
     """
     Verify the vault master password without returning credential data.
@@ -1933,7 +2006,7 @@ def vault_unlock(request: VaultUnlockRequest) -> dict:
     return {"unlocked": fernet is not None}
 
 
-@app.post("/vault/add")
+@app.post("/vault/add", dependencies=[Depends(require_api_key)])
 def vault_add(request: VaultAddRequest) -> dict:
     """
     Unlock the vault and store a new encrypted credential.
@@ -1956,7 +2029,7 @@ def vault_add(request: VaultAddRequest) -> dict:
     }
 
 
-@app.post("/vault/list")
+@app.post("/vault/list", dependencies=[Depends(require_api_key)])
 def vault_list(request: VaultUnlockRequest) -> dict:
     """
     Return vault credentials with metadata only — passwords are never exposed.
@@ -1983,7 +2056,7 @@ def vault_list(request: VaultUnlockRequest) -> dict:
     return {"count": len(masked), "credentials": masked}
 
 
-@app.delete("/vault/{credential_id}")
+@app.delete("/vault/{credential_id}", dependencies=[Depends(require_api_key)])
 def vault_delete(credential_id: int) -> dict:
     """Delete a stored credential by id."""
     get_db_connection().close()
@@ -2051,11 +2124,17 @@ def monitoring_status() -> dict:
 
 @app.post(
     "/monitoring/restart/{detector_id}",
-    dependencies=[Depends(_optional_api_key)],
+    dependencies=[Depends(require_api_key)],
 )
 def restart_monitoring_detector(detector_id: str) -> dict:
     """Restart a background detector service (systemd on Pi, process on Windows)."""
     return _restart_detector_service(detector_id)
+
+
+@app.get("/settings/api-key", dependencies=[Depends(require_api_key)])
+def settings_api_key() -> dict:
+    """Return the configured API key for copy into scripts or other clients."""
+    return {"api_key": get_api_key()}
 
 
 @app.get("/health")

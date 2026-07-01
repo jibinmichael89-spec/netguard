@@ -209,6 +209,7 @@ $coreEngines = @(
     "arp-scanner.exe",
     "risk-scorer.exe",
     "policy-engine.exe",
+    "syslog-export.exe",
     "NetGuard-API.exe"
 )
 

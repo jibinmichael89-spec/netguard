@@ -20,7 +20,7 @@ Write-Host "[*] Stopping running NetGuard processes (so exes can be rebuilt) ...
 $ProcessNames = @(
     "NetGuard-API", "arp-scanner", "risk-scorer", "policy-engine",
     "arp-spoof-detector", "dns-monitor", "rogue-dhcp-detector",
-    "inbound-connection-detector", "threat-intel", "msp-agent"
+    "inbound-connection-detector", "threat-intel", "msp-agent", "syslog-export"
 )
 foreach ($Name in $ProcessNames) {
     Get-Process -Name $Name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -38,6 +38,7 @@ $Specs = @(
     "rogue_dhcp_detector.spec",
     "inbound_connection_detector.spec",
     "policy_engine.spec",
+    "syslog_export.spec",
     "threat_intel.spec",
     "msp_agent.spec"
 )

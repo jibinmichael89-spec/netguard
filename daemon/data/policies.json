@@ -34,6 +34,30 @@
       "severity": "High",
       "description": "Device queried a domain on the threat intelligence blocklist",
       "enabled": true
+    },
+    {
+      "id": "playbook_auto_isolate_critical",
+      "name": "Playbook: Auto-isolate Critical risk",
+      "severity": "Critical",
+      "description": "Automatically block devices that reach Critical risk (score ≥ 70) via router enforcement when NETGUARD_AUTO_ISOLATE_CRITICAL=true",
+      "enabled": false,
+      "playbook": true
+    },
+    {
+      "id": "playbook_repeated_threat_dns",
+      "name": "Playbook: Repeated threat DNS hits",
+      "severity": "High",
+      "description": "Raise a HIGH alert when a device queries 3+ threat-intel blocklist domains within 15 minutes (suggest isolation — does not auto-block)",
+      "enabled": true,
+      "playbook": true
+    },
+    {
+      "id": "playbook_distributed_scan_incident",
+      "name": "Playbook: Distributed scan incident report",
+      "severity": "High",
+      "description": "Email a structured incident summary when distributed inbound scan pattern is detected 3+ times in 24 hours",
+      "enabled": true,
+      "playbook": true
     }
   ]
 }

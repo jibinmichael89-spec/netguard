@@ -1,26 +1,40 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Bell,
+  Copy,
+  FileDown,
+  KeyRound,
   RefreshCw,
   Router,
   Save,
+  Server,
   Send,
   Shield,
   Mail,
 } from "lucide-react";
-import { apiFetch } from "../api";
+import {
+  apiFetch,
+  clearStoredApiKey,
+  downloadComplianceReport,
+  getStoredApiKey,
+  setStoredApiKey,
+} from "../api";
 import type {
+  ApiKeyResponse,
   NotificationConfigResponse,
   PoliciesResponse,
   RouterConfigUpdate,
   RouterSettingsResponse,
+  SyslogSettingsResponse,
   ThreatIntelStatusResponse,
 } from "../types";
 
-type Tab = "notifications" | "threat-intel" | "policies" | "router" | "reports";
+type Tab = "security" | "notifications" | "syslog" | "threat-intel" | "policies" | "router" | "reports";
 
 const TABS: { id: Tab; label: string; icon: typeof Bell }[] = [
+  { id: "security", label: "API key", icon: KeyRound },
   { id: "notifications", label: "Notifications", icon: Bell },
+  { id: "syslog", label: "SIEM / Syslog", icon: Server },
   { id: "threat-intel", label: "Threat Intel", icon: Shield },
   { id: "policies", label: "Policies", icon: Shield },
   { id: "router", label: "Router", icon: Router },
@@ -28,12 +42,27 @@ const TABS: { id: Tab; label: string; icon: typeof Bell }[] = [
 ];
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<Tab>("notifications");
+  const [tab, setTab] = useState<Tab>("security");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [message, setMessage] = useState<string>();
 
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [apiKeyConfigured, setApiKeyConfigured] = useState(() => Boolean(getStoredApiKey()));
+  const [displayedApiKey, setDisplayedApiKey] = useState<string | null>(null);
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [verifyingApiKey, setVerifyingApiKey] = useState(false);
+  const [loadingApiKey, setLoadingApiKey] = useState(false);
+
   const [notifConfig, setNotifConfig] = useState<Record<string, string>>({});
+  const [syslogSettings, setSyslogSettings] = useState<SyslogSettingsResponse | null>(null);
+  const [syslogForm, setSyslogForm] = useState({
+    enabled: false,
+    host: "",
+    port: "514",
+    protocol: "udp" as "udp" | "tcp",
+  });
+  const [savingSyslog, setSavingSyslog] = useState(false);
   const [threatIntel, setThreatIntel] = useState<ThreatIntelStatusResponse | null>(null);
   const [policies, setPolicies] = useState<PoliciesResponse["policies"]>([]);
   const [routerSettings, setRouterSettings] = useState<RouterSettingsResponse | null>(null);
@@ -48,14 +77,16 @@ export default function SettingsPage() {
   const [restartingApi, setRestartingApi] = useState(false);
   const [testingRouter, setTestingRouter] = useState(false);
   const [updatingIntel, setUpdatingIntel] = useState(false);
+  const [generatingCompliance, setGeneratingCompliance] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(undefined);
     const errors: string[] = [];
 
-    const [notif, intel, policyData, router] = await Promise.allSettled([
+    const [notif, syslog, intel, policyData, router] = await Promise.allSettled([
       apiFetch<NotificationConfigResponse>("/notifications/config"),
+      apiFetch<SyslogSettingsResponse>("/settings/syslog"),
       apiFetch<ThreatIntelStatusResponse>("/threat-intel/status"),
       apiFetch<PoliciesResponse>("/policies"),
       apiFetch<RouterSettingsResponse>("/settings/router"),
@@ -65,6 +96,18 @@ export default function SettingsPage() {
       setNotifConfig(notif.value.config);
     } else {
       errors.push("Notifications");
+    }
+
+    if (syslog.status === "fulfilled") {
+      setSyslogSettings(syslog.value);
+      setSyslogForm({
+        enabled: syslog.value.enabled,
+        host: syslog.value.host || "",
+        port: String(syslog.value.port || 514),
+        protocol: syslog.value.protocol === "tcp" ? "tcp" : "udp",
+      });
+    } else {
+      errors.push("Syslog export");
     }
 
     if (intel.status === "fulfilled") {
@@ -102,6 +145,88 @@ export default function SettingsPage() {
     void load();
   }, [load]);
 
+  const loadStoredApiKey = useCallback(async () => {
+    const stored = getStoredApiKey();
+    if (!stored) {
+      setApiKeyConfigured(false);
+      setDisplayedApiKey(null);
+      return;
+    }
+
+    setLoadingApiKey(true);
+    try {
+      const result = await apiFetch<ApiKeyResponse>("/settings/api-key", {
+        requireAuth: true,
+      });
+      setDisplayedApiKey(result.api_key);
+      setApiKeyConfigured(true);
+      setApiKeyInput("");
+    } catch {
+      clearStoredApiKey();
+      setApiKeyConfigured(false);
+      setDisplayedApiKey(null);
+    } finally {
+      setLoadingApiKey(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab === "security") {
+      void loadStoredApiKey();
+    }
+  }, [tab, loadStoredApiKey]);
+
+  const verifyAndSaveApiKey = async () => {
+    const candidate = apiKeyInput.trim();
+    if (!candidate) {
+      setError("Enter the API key from your netguard.env file");
+      return;
+    }
+
+    setVerifyingApiKey(true);
+    setError(undefined);
+    setMessage(undefined);
+    try {
+      const result = await apiFetch<ApiKeyResponse>("/settings/api-key", {
+        headers: { "X-API-Key": candidate },
+      });
+      setStoredApiKey(candidate);
+      setDisplayedApiKey(result.api_key);
+      setApiKeyConfigured(true);
+      setApiKeyInput("");
+      setMessage("API key verified and saved in this browser");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Invalid API key — check %ProgramData%\\NetGuard\\netguard.env (Windows) or /etc/netguard/netguard.env (Pi)",
+      );
+    } finally {
+      setVerifyingApiKey(false);
+    }
+  };
+
+  const copyApiKey = async () => {
+    if (!displayedApiKey) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(displayedApiKey);
+      setMessage("API key copied to clipboard");
+    } catch {
+      setError("Could not copy — select the key and copy manually");
+    }
+  };
+
+  const forgetStoredApiKey = () => {
+    clearStoredApiKey();
+    setApiKeyConfigured(false);
+    setDisplayedApiKey(null);
+    setApiKeyInput("");
+    setShowApiKey(false);
+    setMessage("Stored API key removed from this browser");
+  };
+
   const saveNotifications = async () => {
     setSaving(true);
     setMessage(undefined);
@@ -128,6 +253,40 @@ export default function SettingsPage() {
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveSyslogSettings = async () => {
+    setSavingSyslog(true);
+    setError(undefined);
+    setMessage(undefined);
+    try {
+      const port = Number.parseInt(syslogForm.port, 10);
+      const updated = await apiFetch<SyslogSettingsResponse>("/settings/syslog", {
+        method: "PUT",
+        body: JSON.stringify({
+          enabled: syslogForm.enabled,
+          host: syslogForm.host.trim() || undefined,
+          port: Number.isFinite(port) ? port : 514,
+          protocol: syslogForm.protocol,
+        }),
+      });
+      setSyslogSettings(updated);
+      setSyslogForm({
+        enabled: updated.enabled,
+        host: updated.host || "",
+        port: String(updated.port || 514),
+        protocol: updated.protocol === "tcp" ? "tcp" : "udp",
+      });
+      setMessage(
+        updated.configured
+          ? "Syslog export enabled — alerts will forward in RFC 5424 format"
+          : "Syslog settings saved",
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Syslog save failed");
+    } finally {
+      setSavingSyslog(false);
     }
   };
 
@@ -189,6 +348,24 @@ export default function SettingsPage() {
       setMessage(result.message);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Report send failed");
+    }
+  };
+
+  const generateComplianceReport = async () => {
+    setGeneratingCompliance(true);
+    setError(undefined);
+    setMessage(undefined);
+    try {
+      await downloadComplianceReport();
+      setMessage("Compliance report downloaded (PDF)");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Compliance report failed — configure API key in Settings if needed",
+      );
+    } finally {
+      setGeneratingCompliance(false);
     }
   };
 
@@ -342,6 +519,14 @@ export default function SettingsPage() {
         </div>
       )}
 
+      {!apiKeyConfigured && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          Write actions (block, save settings, vault, etc.) require an API key.
+          Open the <strong>API key</strong> tab and paste the key from your{" "}
+          <code>netguard.env</code> file.
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2">
         {TABS.map(({ id, label, icon: Icon }) => (
           <button
@@ -359,6 +544,90 @@ export default function SettingsPage() {
           </button>
         ))}
       </div>
+
+      {tab === "security" && (
+        <div className="rounded-xl border border-ng-border bg-ng-card p-6 space-y-4">
+          <div>
+            <h3 className="text-lg font-semibold text-white">API key</h3>
+            <p className="mt-1 text-sm text-gray-400">
+              Required for block, save, and other write actions. The key is generated
+              automatically on first API start if missing — find it in{" "}
+              <code>%ProgramData%\NetGuard\netguard.env</code> (Windows) or{" "}
+              <code>/etc/netguard/netguard.env</code> (Pi). Save it here once; this
+              browser will send it on every write request.
+            </p>
+          </div>
+
+          {loadingApiKey ? (
+            <p className="text-sm text-gray-500">Checking stored key…</p>
+          ) : apiKeyConfigured && displayedApiKey ? (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="block flex-1 min-w-[16rem] text-sm">
+                  <span className="text-gray-400">Current key</span>
+                  <div className="mt-1 flex gap-2">
+                    <input
+                      readOnly
+                      type={showApiKey ? "text" : "password"}
+                      className="w-full rounded-lg border border-ng-border bg-ng-bg px-3 py-2 font-mono text-sm text-white"
+                      value={displayedApiKey}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowApiKey((v) => !v)}
+                      className="rounded-lg border border-ng-border px-3 py-2 text-sm text-gray-300 hover:text-white"
+                    >
+                      {showApiKey ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => void copyApiKey()}
+                  className="flex items-center gap-2 rounded-lg border border-ng-border px-4 py-2 text-sm text-gray-300 hover:text-white"
+                >
+                  <Copy className="h-4 w-4" />
+                  Copy
+                </button>
+              </div>
+              <p className="text-xs text-gray-500">
+                Use this key in scripts or a second browser via the{" "}
+                <code>X-API-Key</code> header.
+              </p>
+              <button
+                type="button"
+                onClick={forgetStoredApiKey}
+                className="rounded-lg border border-red-500/30 px-4 py-2 text-sm text-red-300 hover:bg-red-500/10"
+              >
+                Remove key from this browser
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <label className="block text-sm">
+                <span className="text-gray-400">Paste API key</span>
+                <input
+                  type="password"
+                  autoComplete="off"
+                  className="mt-1 w-full rounded-lg border border-ng-border bg-ng-bg px-3 py-2 font-mono text-sm text-white"
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  placeholder="32-character key from netguard.env"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => void verifyAndSaveApiKey()}
+                disabled={verifyingApiKey}
+                className="flex items-center gap-2 rounded-lg bg-ng-accent px-4 py-2 text-sm font-medium text-white hover:bg-ng-accent/90 disabled:opacity-50"
+              >
+                <KeyRound className="h-4 w-4" />
+                {verifyingApiKey ? "Verifying…" : "Verify & save"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {tab === "notifications" && (
         <div className="rounded-xl border border-ng-border bg-ng-card p-6 space-y-4">
@@ -427,6 +696,97 @@ export default function SettingsPage() {
         </div>
       )}
 
+      {tab === "syslog" && syslogSettings && (
+        <div className="rounded-xl border border-ng-border bg-ng-card p-6 space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-semibold text-white">SIEM / Syslog export</h3>
+              <p className="mt-1 text-sm text-gray-400">
+                Forward NetGuard security alerts to your syslog collector (Wazuh, Elastic,
+                Splunk, rsyslog) in RFC 5424 format. The syslog-export service polls new
+                alerts every 30 seconds.
+              </p>
+            </div>
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-medium ${
+                syslogSettings.configured
+                  ? "bg-emerald-500/10 text-emerald-400"
+                  : "bg-amber-500/10 text-amber-400"
+              }`}
+            >
+              {syslogSettings.configured ? "Active" : "Disabled"}
+            </span>
+          </div>
+
+          <label className="flex items-center gap-3 text-sm text-gray-300">
+            <input
+              type="checkbox"
+              checked={syslogForm.enabled}
+              onChange={(e) =>
+                setSyslogForm((prev) => ({ ...prev, enabled: e.target.checked }))
+              }
+              className="h-4 w-4 rounded border-ng-border"
+            />
+            Enable syslog export
+          </label>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block text-sm sm:col-span-2">
+              <span className="text-gray-400">Syslog server host</span>
+              <input
+                className="mt-1 w-full rounded-lg border border-ng-border bg-ng-bg px-3 py-2 text-white"
+                value={syslogForm.host}
+                onChange={(e) => setSyslogForm((prev) => ({ ...prev, host: e.target.value }))}
+                placeholder="192.168.1.10 or siem.example.com"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="text-gray-400">Port</span>
+              <input
+                className="mt-1 w-full rounded-lg border border-ng-border bg-ng-bg px-3 py-2 text-white"
+                value={syslogForm.port}
+                onChange={(e) => setSyslogForm((prev) => ({ ...prev, port: e.target.value }))}
+                placeholder="514"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="text-gray-400">Protocol</span>
+              <select
+                className="mt-1 w-full rounded-lg border border-ng-border bg-ng-bg px-3 py-2 text-white"
+                value={syslogForm.protocol}
+                onChange={(e) =>
+                  setSyslogForm((prev) => ({
+                    ...prev,
+                    protocol: e.target.value === "tcp" ? "tcp" : "udp",
+                  }))
+                }
+              >
+                <option value="udp">UDP</option>
+                <option value="tcp">TCP</option>
+              </select>
+            </label>
+          </div>
+
+          <p className="text-xs text-gray-500">
+            Settings are written to <code>{syslogSettings.env_file}</code>. Example:
+            severity CRITICAL maps to syslog priority 130 (local0.critical). Structured
+            data uses enterprise ID <code>netguard@32473</code>.
+          </p>
+
+          <div className="flex flex-wrap gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => void saveSyslogSettings()}
+              disabled={savingSyslog}
+              className="flex items-center gap-2 rounded-lg bg-ng-accent px-4 py-2 text-sm font-medium text-white hover:bg-ng-accent/90 disabled:opacity-50"
+            >
+              <Save className="h-4 w-4" />
+              Save
+            </button>
+          </div>
+        </div>
+      )}
+
       {tab === "threat-intel" && threatIntel && (
         <div className="rounded-xl border border-ng-border bg-ng-card p-6 space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -470,15 +830,26 @@ export default function SettingsPage() {
               Run evaluation
             </button>
           </div>
+          <p className="text-sm text-gray-500">
+            Detection policies and automated-response playbooks. Playbooks enforce a
+            24-hour per-device cooldown to prevent notification spam.
+          </p>
           <ul className="divide-y divide-ng-border">
             {policies.map((policy) => (
               <li key={policy.id} className="flex items-start justify-between gap-4 py-4">
                 <div>
                   <p className="font-medium text-white">{policy.name}</p>
                   <p className="text-sm text-gray-500">{policy.description}</p>
-                  <span className="mt-1 inline-block rounded bg-ng-elevated px-2 py-0.5 text-xs text-gray-400">
-                    {policy.severity}
-                  </span>
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    <span className="inline-block rounded bg-ng-elevated px-2 py-0.5 text-xs text-gray-400">
+                      {policy.severity}
+                    </span>
+                    {policy.playbook && (
+                      <span className="inline-block rounded bg-ng-accent/15 px-2 py-0.5 text-xs text-ng-accent">
+                        Automated playbook
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <label className="flex items-center gap-2 text-sm text-gray-400">
                   <input
@@ -621,20 +992,40 @@ export default function SettingsPage() {
       )}
 
       {tab === "reports" && (
-        <div className="rounded-xl border border-ng-border bg-ng-card p-6 space-y-4">
-          <h3 className="text-lg font-semibold text-white">Weekly email report</h3>
-          <p className="text-sm text-gray-400">
-            Sends an HTML summary to the alert email address configured under Notifications.
-            On Pi, a systemd timer runs this every Monday at 08:00.
-          </p>
-          <button
-            type="button"
-            onClick={() => void sendWeeklyReport()}
-            className="flex items-center gap-2 rounded-lg bg-ng-accent px-4 py-2 text-sm font-medium text-white"
-          >
-            <Mail className="h-4 w-4" />
-            Send report now
-          </button>
+        <div className="space-y-6">
+          <div className="rounded-xl border border-ng-border bg-ng-card p-6 space-y-4">
+            <h3 className="text-lg font-semibold text-white">GDPR compliance report</h3>
+            <p className="text-sm text-gray-400">
+              Generates a GDPR Article 32 evidence PDF: network asset inventory, technical
+              security measures, risk assessment, incident log, and data-handling statement.
+              Default reporting period is the last 30 days.
+            </p>
+            <button
+              type="button"
+              onClick={() => void generateComplianceReport()}
+              disabled={generatingCompliance}
+              className="flex items-center gap-2 rounded-lg bg-ng-accent px-4 py-2 text-sm font-medium text-white hover:bg-ng-accent/90 disabled:opacity-50"
+            >
+              <FileDown className={`h-4 w-4 ${generatingCompliance ? "animate-pulse" : ""}`} />
+              {generatingCompliance ? "Generating…" : "Generate compliance report"}
+            </button>
+          </div>
+
+          <div className="rounded-xl border border-ng-border bg-ng-card p-6 space-y-4">
+            <h3 className="text-lg font-semibold text-white">Weekly email report</h3>
+            <p className="text-sm text-gray-400">
+              Sends an HTML summary to the alert email address configured under Notifications.
+              On Pi, a systemd timer runs this every Monday at 08:00.
+            </p>
+            <button
+              type="button"
+              onClick={() => void sendWeeklyReport()}
+              className="flex items-center gap-2 rounded-lg border border-ng-border px-4 py-2 text-sm font-medium text-gray-300 hover:text-white"
+            >
+              <Mail className="h-4 w-4" />
+              Send weekly report now
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -3,20 +3,13 @@ import os
 block_cipher = None
 project_root = os.path.dirname(os.path.abspath(SPEC))
 daemon_path = os.path.join(project_root, "daemon")
-data_path = os.path.join(daemon_path, "data")
 
 a = Analysis(
-    ["daemon/detection/policy_engine.py"],
+    ["daemon/integrations/syslog_export.py"],
     pathex=[project_root, daemon_path],
     binaries=[],
-    datas=[(data_path, os.path.join("daemon", "data"))],
-    hiddenimports=[
-        "db_path",
-        "schema_extensions",
-        "detection.threat_intel",
-        "router_manager",
-        "notifier",
-    ],
+    datas=[],
+    hiddenimports=["db_path", "netguard_env", "schema_extensions"],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -36,7 +29,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name="policy-engine",
+    name="syslog-export",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

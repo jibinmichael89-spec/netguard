@@ -1,0 +1,39 @@
+NetGuard Privacy & Data Handling Statement
+
+NetGuard is designed for local-network security monitoring. The following
+principles govern how device, DNS, and security event data is collected,
+stored, and transmitted.
+
+Local storage
+- All device inventory, DNS query metadata, port scan results, security
+  alerts, and risk scores are stored in a SQLite database on the host
+  running NetGuard (typically your Raspberry Pi or Windows PC).
+- The dashboard is served by the local NetGuard API; browsing the dashboard
+  does not send your network data to NetGuard developers or any third-party
+  analytics service.
+
+No routine cloud transmission
+- Device IP addresses, MAC addresses, hostnames, DNS queries, and alert
+  details are not uploaded to the cloud as part of normal operation.
+- Threat intelligence updates download a public domain blocklist (Steven Black
+  hosts feed by default) to your NetGuard host only. Your DNS query history is
+  never sent to the feed provider.
+
+MSP mode (optional)
+- When NETGUARD_MSP_COLLECTOR_URL and NETGUARD_SITE_TOKEN are configured,
+  this installation acts as a managed site and sends periodic heartbeat
+  summaries (device counts, alert counts, agent version) to your MSP's
+  central collector. Full DNS logs and device details are not transmitted
+  unless your MSP operator has configured additional integration.
+- Home installations without MSP environment variables do not send any remote
+  telemetry.
+
+Data retention
+- Data is retained locally until you delete the NetGuard database or
+  uninstall NetGuard. You control backup, export, and deletion.
+
+Your responsibilities
+- Restrict access to the NetGuard dashboard and API on your LAN.
+- Configure NETGUARD_API_KEY to protect write operations.
+- Review this report and underlying alert logs for GDPR Article 32 evidence
+  of appropriate technical and organisational measures.

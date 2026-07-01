@@ -169,6 +169,8 @@ export interface InboundAttempt {
   severity: string;
   timestamp: string;
   description: string;
+  suppressed_count: number;
+  alert_pattern: "single_source" | "distributed_scan";
 }
 
 export interface InboundAttemptsResponse {
@@ -292,6 +294,7 @@ export interface PolicyDefinition {
   severity: string;
   description: string;
   enabled?: boolean;
+  playbook?: boolean;
 }
 
 export interface PoliciesResponse {
@@ -317,6 +320,19 @@ export interface RouterConfigUpdate {
   router_user?: string;
   router_password?: string;
   router_token?: string;
+}
+
+export interface ApiKeyResponse {
+  api_key: string;
+}
+
+export interface SyslogSettingsResponse {
+  enabled: boolean;
+  host: string;
+  port: number;
+  protocol: "udp" | "tcp";
+  env_file: string;
+  configured: boolean;
 }
 
 export interface MspSite {

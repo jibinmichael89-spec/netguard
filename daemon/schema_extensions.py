@@ -39,6 +39,8 @@ def apply_schema_extensions(conn: sqlite3.Connection) -> None:
         ("acknowledged_at", "TEXT"),
         ("site_id", "TEXT DEFAULT 'default'"),
         ("recommended_action", "TEXT"),
+        ("suppressed_count", "INTEGER DEFAULT 0"),
+        ("alert_pattern", "TEXT"),
     ):
         _add_column(conn, "alerts", column, typedef)
 
@@ -167,6 +169,20 @@ def apply_schema_extensions(conn: sqlite3.Connection) -> None:
             alerts_24h      INTEGER DEFAULT 0,
             agent_version   TEXT,
             status          TEXT DEFAULT 'unknown'
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS automated_actions (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_ip      TEXT NOT NULL,
+            playbook_name  TEXT NOT NULL,
+            action_taken   TEXT NOT NULL,
+            success        INTEGER NOT NULL DEFAULT 0,
+            timestamp      TEXT NOT NULL,
+            reversible     INTEGER NOT NULL DEFAULT 1,
+            details        TEXT
         )
         """
     )
