@@ -103,6 +103,12 @@ def get_api_key() -> str:
 
 
 def require_api_key(x_api_key: str | None = Header(default=None, alias="X-API-Key")) -> None:
+    verify_api_key(x_api_key)
+
+
+def verify_api_key(x_api_key: str | None = Header(default=None, alias="X-API-Key")) -> str:
+    """FastAPI dependency: require valid X-API-Key and return it."""
     required = get_api_key()
     if not x_api_key or x_api_key != required:
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    return x_api_key

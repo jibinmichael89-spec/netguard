@@ -36,26 +36,26 @@
       "enabled": true
     },
     {
-      "id": "playbook_auto_isolate_critical",
-      "name": "Playbook: Auto-isolate Critical risk",
+      "id": "auto_isolate_critical",
+      "name": "Auto-isolate Critical risk device",
       "severity": "Critical",
-      "description": "Automatically block devices that reach Critical risk (score ≥ 70) via router enforcement when NETGUARD_AUTO_ISOLATE_CRITICAL=true",
+      "description": "Automatically block devices at Critical risk via router enforcement when NETGUARD_AUTO_ISOLATE_CRITICAL=true",
       "enabled": false,
       "playbook": true
     },
     {
-      "id": "playbook_repeated_threat_dns",
-      "name": "Playbook: Repeated threat DNS hits",
+      "id": "repeated_threat_dns",
+      "name": "Repeated threat-intel DNS hits",
       "severity": "High",
-      "description": "Raise a HIGH alert when a device queries 3+ threat-intel blocklist domains within 15 minutes (suggest isolation — does not auto-block)",
+      "description": "Raise a HIGH alert when a device queries 3+ threat-intel blocklist domains within 15 minutes",
       "enabled": true,
       "playbook": true
     },
     {
-      "id": "playbook_distributed_scan_incident",
-      "name": "Playbook: Distributed scan incident report",
+      "id": "port_scan_incident",
+      "name": "Port scan incident report",
       "severity": "High",
-      "description": "Email a structured incident summary when distributed inbound scan pattern is detected 3+ times in 24 hours",
+      "description": "Email an incident summary when distributed inbound scan pattern is detected 3+ times in 24 hours",
       "enabled": true,
       "playbook": true
     }

@@ -186,6 +186,21 @@ def apply_schema_extensions(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS service_banners (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_ip       TEXT NOT NULL,
+            port            INTEGER NOT NULL,
+            banner_text     TEXT,
+            parsed_product  TEXT,
+            parsed_version  TEXT,
+            confidence      TEXT NOT NULL DEFAULT 'None',
+            captured_at     TEXT NOT NULL,
+            UNIQUE(device_ip, port)
+        )
+        """
+    )
     conn.commit()
 
 

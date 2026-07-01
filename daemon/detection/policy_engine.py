@@ -14,9 +14,16 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DAEMON_DIR = PROJECT_ROOT / "daemon"
 POLICIES_PATH = PROJECT_ROOT / "daemon" / "data" / "policies.json"
 
-PLAYBOOK_AUTO_ISOLATE = "playbook_auto_isolate_critical"
-PLAYBOOK_THREAT_DNS = "playbook_repeated_threat_dns"
-PLAYBOOK_SCAN_INCIDENT = "playbook_distributed_scan_incident"
+PLAYBOOK_AUTO_ISOLATE = "auto_isolate_critical"
+PLAYBOOK_THREAT_DNS = "repeated_threat_dns"
+PLAYBOOK_SCAN_INCIDENT = "port_scan_incident"
+
+# Legacy policy IDs from earlier builds (DB toggle keys may still use these).
+_LEGACY_POLICY_IDS = {
+    PLAYBOOK_AUTO_ISOLATE: "playbook_auto_isolate_critical",
+    PLAYBOOK_THREAT_DNS: "playbook_repeated_threat_dns",
+    PLAYBOOK_SCAN_INCIDENT: "playbook_distributed_scan_incident",
+}
 
 PLAYBOOK_COOLDOWN_HOURS = 24
 THREAT_DNS_WINDOW_MINUTES = 15
@@ -46,6 +53,22 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return value in {"1", "true", "yes", "on"}
 
 
+def _policy_enabled_value(conn: sqlite3.Connection, policy_id: str) -> str | None:
+    """Read enabled flag from notification_config (supports legacy playbook IDs)."""
+    keys = [f"policy_enabled_{policy_id}"]
+    legacy = _LEGACY_POLICY_IDS.get(policy_id)
+    if legacy:
+        keys.append(f"policy_enabled_{legacy}")
+    for key in keys:
+        row = conn.execute(
+            "SELECT value FROM notification_config WHERE key = ?",
+            (key,),
+        ).fetchone()
+        if row is not None:
+            return row[0]
+    return None
+
+
 def _load_policies(db_path: str | None = None) -> list[dict]:
     if not POLICIES_PATH.exists():
         return []
@@ -56,13 +79,9 @@ def _load_policies(db_path: str | None = None) -> list[dict]:
         conn = sqlite3.connect(db_path)
         try:
             for policy in policies:
-                key = f"policy_enabled_{policy['id']}"
-                row = conn.execute(
-                    "SELECT value FROM notification_config WHERE key = ?",
-                    (key,),
-                ).fetchone()
-                if row is not None:
-                    policy["enabled"] = row[0] not in ("0", "false", "False")
+                stored = _policy_enabled_value(conn, policy["id"])
+                if stored is not None:
+                    policy["enabled"] = stored not in ("0", "false", "False")
         finally:
             conn.close()
     return [policy for policy in policies if policy.get("enabled", True)]

@@ -42,9 +42,9 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -100,7 +100,7 @@ if _api_module_dir not in sys.path:
 
 import features as feature_routes
 import msp as msp_routes
-from api_key import ensure_api_key_configured, get_api_key, require_api_key
+from api_key import ensure_api_key_configured, get_api_key, verify_api_key
 
 DB_PATH = resolve_db_path(PROJECT_ROOT if not getattr(sys, "frozen", False) else None)
 PORT_INSTRUCTIONS_PATH = os.path.join(
@@ -208,6 +208,27 @@ app.add_middleware(
     max_age=3600,
 )
 
+_WRITE_METHODS = frozenset({"POST", "PUT", "DELETE", "PATCH"})
+_WRITE_AUTH_EXEMPT_PREFIXES = (
+    "/api/v1/heartbeat",
+)
+
+
+@app.middleware("http")
+async def enforce_api_key_on_writes(request: Request, call_next):
+    """Require X-API-Key on every mutating request except MSP heartbeat."""
+    if request.method in _WRITE_METHODS:
+        path = request.url.path
+        if not any(path.startswith(prefix) for prefix in _WRITE_AUTH_EXEMPT_PREFIXES):
+            header_key = request.headers.get("X-API-Key", "").strip()
+            required = get_api_key()
+            if not header_key or header_key != required:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Invalid or missing API key"},
+                )
+    return await call_next(request)
+
 
 def _preload_risk_rules() -> None:
     """Load port risk weights once at startup for open-port API responses."""
@@ -226,13 +247,9 @@ def _preload_risk_rules() -> None:
 
 @app.on_event("startup")
 def _startup() -> None:
-    """Ensure API key, load risk rules, and register feature routes."""
+    """Ensure API key is configured and risk rules are loaded."""
     ensure_api_key_configured()
     _preload_risk_rules()
-    feature_routes.configure(DB_PATH, get_db_connection)
-    msp_routes.configure(DB_PATH, get_db_connection)
-    app.include_router(feature_routes.router)
-    app.include_router(msp_routes.router)
 
 
 def get_risk_rules() -> dict:
@@ -1356,8 +1373,12 @@ def list_devices(include_blocked: bool = Query(default=False)) -> dict:
     return {"count": len(devices), "devices": devices}
 
 
-@app.put("/devices/{device_ip}/tag", dependencies=[Depends(require_api_key)])
-def update_device_tag(device_ip: str, request: DeviceTagRequest) -> dict:
+@app.put("/devices/{device_ip}/tag")
+def update_device_tag(
+    device_ip: str,
+    request: DeviceTagRequest,
+    api_key: str = Depends(verify_api_key),
+) -> dict:
     """
     Set or update a user-defined tag for a device by IP address.
     """
@@ -1384,8 +1405,12 @@ def update_device_tag(device_ip: str, request: DeviceTagRequest) -> dict:
     }
 
 
-@app.put("/devices/id/{device_id}/trust", dependencies=[Depends(require_api_key)])
-def update_device_trust_by_id(device_id: int, request: DeviceTrustRequest) -> dict:
+@app.put("/devices/id/{device_id}/trust")
+def update_device_trust_by_id(
+    device_id: int,
+    request: DeviceTrustRequest,
+    api_key: str = Depends(verify_api_key),
+) -> dict:
     """Mark a device as trusted or remove trusted status by device id."""
     conn = get_db_connection()
     device = _get_device_row(conn, device_id)
@@ -1407,8 +1432,12 @@ def update_device_trust_by_id(device_id: int, request: DeviceTrustRequest) -> di
     }
 
 
-@app.put("/devices/id/{device_id}/block", dependencies=[Depends(require_api_key)])
-def update_device_block_by_id(device_id: int, request: DeviceBlockRequest) -> dict:
+@app.put("/devices/id/{device_id}/block")
+def update_device_block_by_id(
+    device_id: int,
+    request: DeviceBlockRequest,
+    api_key: str = Depends(verify_api_key),
+) -> dict:
     """Block or unblock a device by device id."""
     conn = get_db_connection()
     device = _get_device_row(conn, device_id)
@@ -1430,8 +1459,12 @@ def update_device_block_by_id(device_id: int, request: DeviceBlockRequest) -> di
     }
 
 
-@app.put("/devices/{device_ip}/trust", dependencies=[Depends(require_api_key)])
-def update_device_trust(device_ip: str, request: DeviceTrustRequest) -> dict:
+@app.put("/devices/{device_ip}/trust")
+def update_device_trust(
+    device_ip: str,
+    request: DeviceTrustRequest,
+    api_key: str = Depends(verify_api_key),
+) -> dict:
     """Mark a device as trusted or remove trusted status."""
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -1447,8 +1480,12 @@ def update_device_trust(device_ip: str, request: DeviceTrustRequest) -> dict:
     return update_device_trust_by_id(row[0], request)
 
 
-@app.put("/devices/{device_ip}/block", dependencies=[Depends(require_api_key)])
-def update_device_block(device_ip: str, request: DeviceBlockRequest) -> dict:
+@app.put("/devices/{device_ip}/block")
+def update_device_block(
+    device_ip: str,
+    request: DeviceBlockRequest,
+    api_key: str = Depends(verify_api_key),
+) -> dict:
     """Block or unblock a device on the network."""
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -1996,8 +2033,11 @@ def list_ports_for_device(device_ip: str) -> dict:
     return {"device_ip": device_ip, "count": len(rows), "ports": rows}
 
 
-@app.post("/vault/unlock", dependencies=[Depends(require_api_key)])
-def vault_unlock(request: VaultUnlockRequest) -> dict:
+@app.post("/vault/unlock")
+def vault_unlock(
+    request: VaultUnlockRequest,
+    api_key: str = Depends(verify_api_key),
+) -> dict:
     """
     Verify the vault master password without returning credential data.
     """
@@ -2006,8 +2046,11 @@ def vault_unlock(request: VaultUnlockRequest) -> dict:
     return {"unlocked": fernet is not None}
 
 
-@app.post("/vault/add", dependencies=[Depends(require_api_key)])
-def vault_add(request: VaultAddRequest) -> dict:
+@app.post("/vault/add")
+def vault_add(
+    request: VaultAddRequest,
+    api_key: str = Depends(verify_api_key),
+) -> dict:
     """
     Unlock the vault and store a new encrypted credential.
     """
@@ -2029,8 +2072,11 @@ def vault_add(request: VaultAddRequest) -> dict:
     }
 
 
-@app.post("/vault/list", dependencies=[Depends(require_api_key)])
-def vault_list(request: VaultUnlockRequest) -> dict:
+@app.post("/vault/list")
+def vault_list(
+    request: VaultUnlockRequest,
+    api_key: str = Depends(verify_api_key),
+) -> dict:
     """
     Return vault credentials with metadata only — passwords are never exposed.
     """
@@ -2056,8 +2102,11 @@ def vault_list(request: VaultUnlockRequest) -> dict:
     return {"count": len(masked), "credentials": masked}
 
 
-@app.delete("/vault/{credential_id}", dependencies=[Depends(require_api_key)])
-def vault_delete(credential_id: int) -> dict:
+@app.delete("/vault/{credential_id}")
+def vault_delete(
+    credential_id: int,
+    api_key: str = Depends(verify_api_key),
+) -> dict:
     """Delete a stored credential by id."""
     get_db_connection().close()
     delete_credential(credential_id)
@@ -2122,19 +2171,48 @@ def monitoring_status() -> dict:
         conn.close()
 
 
-@app.post(
-    "/monitoring/restart/{detector_id}",
-    dependencies=[Depends(require_api_key)],
-)
-def restart_monitoring_detector(detector_id: str) -> dict:
+@app.post("/monitoring/restart/{detector_id}")
+def restart_monitoring_detector(
+    detector_id: str,
+    api_key: str = Depends(verify_api_key),
+) -> dict:
     """Restart a background detector service (systemd on Pi, process on Windows)."""
     return _restart_detector_service(detector_id)
 
 
-@app.get("/settings/api-key", dependencies=[Depends(require_api_key)])
-def settings_api_key() -> dict:
+@app.get("/settings/api-key")
+def settings_api_key(api_key: str = Depends(verify_api_key)) -> dict:
     """Return the configured API key for copy into scripts or other clients."""
     return {"api_key": get_api_key()}
+
+
+@app.get("/settings/syslog")
+def get_settings_syslog() -> dict:
+    """Return syslog/SIEM export settings from netguard.env."""
+    return feature_routes.get_syslog_settings()
+
+
+@app.put("/settings/syslog")
+def put_settings_syslog(
+    body: feature_routes.SyslogConfigUpdate,
+    api_key: str = Depends(verify_api_key),
+) -> dict:
+    """Update syslog export settings (written to netguard.env)."""
+    updated = feature_routes.save_syslog_settings(body)
+    return {"success": True, "updated_keys": updated, **feature_routes.get_syslog_settings()}
+
+
+@app.post("/reports/compliance/generate")
+def generate_compliance_report(
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    api_key: str = Depends(verify_api_key),
+) -> Response:
+    """Generate a GDPR Article 32 compliance evidence PDF."""
+    return feature_routes.build_compliance_report_response(
+        start_date=start_date,
+        end_date=end_date,
+    )
 
 
 @app.get("/health")
@@ -2154,6 +2232,13 @@ def health_check() -> dict:
 # ---------------------------------------------------------------------------
 
 DASHBOARD_URL = "http://127.0.0.1:8000"
+
+ensure_api_key_configured()
+_preload_risk_rules()
+feature_routes.configure(DB_PATH, get_db_connection)
+msp_routes.configure(DB_PATH, get_db_connection)
+app.include_router(feature_routes.router)
+app.include_router(msp_routes.router)
 
 
 if __name__ == "__main__":
