@@ -52,6 +52,15 @@ def apply_schema_extensions(conn: sqlite3.Connection) -> None:
         ("is_approved", "INTEGER DEFAULT 1"),
         ("approval_status", "TEXT DEFAULT 'approved'"),
         ("notes", "TEXT"),
+        ("os_guess", "TEXT"),
+        ("os_confidence", "TEXT"),
+        ("device_category", "TEXT"),
+        ("fingerprint_source", "TEXT"),
+        ("last_fingerprint_at", "TEXT"),
+        ("risk_score", "INTEGER"),
+        ("risk_level", "TEXT"),
+        ("risk_factors", "TEXT"),
+        ("risk_calculated_at", "TEXT"),
     ):
         _add_column(conn, "devices", column, typedef)
 

@@ -19,7 +19,11 @@ from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DAEMON_DIR = PROJECT_ROOT / "daemon"
+if getattr(sys, "frozen", False):
+    _bundle_root = Path(getattr(sys, "_MEIPASS", PROJECT_ROOT))
+    DAEMON_DIR = _bundle_root / "daemon"
+else:
+    DAEMON_DIR = PROJECT_ROOT / "daemon"
 PRIVACY_POLICY_PATH = DAEMON_DIR / "data" / "privacy_policy.txt"
 DEFAULT_FEED_URL = os.environ.get(
     "NETGUARD_THREAT_FEED_URL",
@@ -202,8 +206,10 @@ def build_compliance_report(
 ) -> dict[str, Any]:
     """Collect all report sections from the NetGuard database."""
     _configure_paths()
+    from database import init_netguard_database
     from schema_extensions import apply_schema_extensions
 
+    init_netguard_database(db_path)
     period_start, period_end = resolve_report_period(start_date, end_date)
     start_iso = period_start.isoformat()
     end_iso = period_end.isoformat()
@@ -632,29 +638,80 @@ def _pdf_safe(text: str) -> str:
     return text.encode("latin-1", errors="replace").decode("latin-1")
 
 
+def _pdf_clip(text: str, limit: int = 220) -> str:
+    cleaned = " ".join(str(text or "").split())
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[: limit - 3] + "..."
+
+
+def _pdf_output_bytes(pdf: Any) -> bytes:
+    raw = pdf.output()
+    if isinstance(raw, (bytes, bytearray)):
+        return bytes(raw)
+    return str(raw).encode("latin-1", errors="replace")
+
+
 def render_compliance_pdf(report: dict[str, Any]) -> bytes:
     """Render PDF using fpdf2 (lightweight, pure Python)."""
+    try:
+        return _render_compliance_pdf_body(report)
+    except Exception as exc:
+        return _render_compliance_pdf_fallback(report, exc)
+
+
+def _render_compliance_pdf_fallback(report: dict[str, Any], error: Exception) -> bytes:
     from fpdf import FPDF
-    from fpdf.enums import XPos, YPos
+
+    pdf = FPDF(orientation="P", unit="mm", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=14)
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.multi_cell(0, 8, _pdf_safe(report.get("title", "NetGuard Compliance Report")))
+    pdf.ln(4)
+    pdf.set_font("Helvetica", "", 10)
+    pdf.multi_cell(
+        0,
+        5,
+        _pdf_safe(
+            "A simplified compliance PDF was generated because the full layout failed.\n"
+            f"Error: {error}\n"
+            f"Period: {report.get('period_label', 'n/a')}\n"
+            f"Devices: {report.get('asset_inventory', {}).get('total_devices', 0)}\n"
+            f"Alerts: {report.get('incident_log', {}).get('alert_count', 0)}"
+        ),
+    )
+    return _pdf_output_bytes(pdf)
+
+
+def _render_compliance_pdf_body(report: dict[str, Any]) -> bytes:
+    from fpdf import FPDF
 
     class CompliancePDF(FPDF):
         def header(self) -> None:
+            self.set_y(8)
             self.set_font("Helvetica", "I", 8)
             self.set_text_color(100, 116, 139)
+            self.set_x(self.l_margin)
             self.cell(
-                0,
-                8,
+                self.w - self.l_margin - self.r_margin,
+                6,
                 _pdf_safe("NetGuard GDPR Art. 32 Compliance Report"),
                 align="R",
-                new_x=XPos.LMARGIN,
-                new_y=YPos.NEXT,
             )
+            self.ln(8)
 
         def footer(self) -> None:
             self.set_y(-12)
             self.set_font("Helvetica", "I", 8)
             self.set_text_color(100, 116, 139)
-            self.cell(0, 8, _pdf_safe(f"Page {self.page_no()}"), align="C")
+            self.set_x(self.l_margin)
+            self.cell(
+                self.w - self.l_margin - self.r_margin,
+                8,
+                _pdf_safe(f"Page {self.page_no()}"),
+                align="C",
+            )
 
         def section_title(self, title: str) -> None:
             self.ln(4)
@@ -670,14 +727,14 @@ def render_compliance_pdf(report: dict[str, Any]) -> bytes:
             self.set_x(self.l_margin)
             self.set_font("Helvetica", "", 9)
             self.set_text_color(30, 41, 59)
-            self.multi_cell(0, 5, _pdf_safe(text))
+            self.multi_cell(0, 5, _pdf_safe(_pdf_clip(text, 1200)))
             self.ln(1)
 
         def bullet_line(self, text: str, size: int = 8) -> None:
             self.set_x(self.l_margin)
             self.set_font("Helvetica", "", size)
             self.set_text_color(30, 41, 59)
-            self.multi_cell(0, 4, _pdf_safe(f"• {text}"))
+            self.multi_cell(0, 4, _pdf_safe(_pdf_clip(f"• {text}", 260)))
 
     pdf = CompliancePDF(orientation="P", unit="mm", format="A4")
     pdf.set_auto_page_break(auto=True, margin=14)
@@ -798,7 +855,7 @@ def render_compliance_pdf(report: dict[str, Any]) -> bytes:
         if line.strip():
             pdf.body_text(line.strip())
 
-    return bytes(pdf.output())
+    return _pdf_output_bytes(pdf)
 
 
 def generate_compliance_report(

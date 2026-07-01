@@ -644,15 +644,31 @@ def update_notification_config(body: NotificationConfigUpdate) -> dict:
     return {"success": True, "updated_keys": list(mapping.keys())}
 
 
+def _import_compliance_report():
+    """Load compliance_report in dev and PyInstaller frozen builds."""
+    if getattr(sys, "frozen", False):
+        import compliance_report
+
+        return compliance_report
+    reports_dir = os.path.join(_features_daemon, "reports")
+    if reports_dir not in sys.path:
+        sys.path.append(reports_dir)
+    import compliance_report
+
+    return compliance_report
+
+
 def build_compliance_report_response(
     start_date: str | None = None,
     end_date: str | None = None,
 ) -> Response:
     """Build compliance PDF download response."""
-    reports_dir = os.path.join(_features_daemon, "reports")
-    if reports_dir not in sys.path:
-        sys.path.insert(0, reports_dir)
-    from compliance_report import generate_compliance_report, resolve_report_period
+    compliance_report = _import_compliance_report()
+    generate_compliance_report = compliance_report.generate_compliance_report
+    resolve_report_period = compliance_report.resolve_report_period
+
+    if not _DB_PATH:
+        raise HTTPException(status_code=503, detail="Compliance report database is not configured")
 
     try:
         _, _, pdf_bytes = generate_compliance_report(
@@ -660,6 +676,11 @@ def build_compliance_report_response(
             start_date=start_date,
             end_date=end_date,
         )
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Compliance report PDF engine is not available: {exc}",
+        ) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=500,

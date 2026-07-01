@@ -1,6 +1,9 @@
 ﻿import os
 
+from PyInstaller.utils.hooks import collect_submodules
+
 block_cipher = None
+fpdf_hiddenimports = collect_submodules("fpdf")
 
 project_root = os.path.dirname(os.path.abspath(SPEC))
 vault_path = os.path.join(project_root, "daemon", "vault")
@@ -54,7 +57,8 @@ a = Analysis(
         "fpdf",
         "compliance_report",
         "weekly_report",
-    ],
+    ]
+    + fpdf_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
