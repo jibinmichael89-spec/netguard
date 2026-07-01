@@ -10,4 +10,11 @@ venv/
 Thumbs.db
 vault_request.json
 build/prerequisites/npcap*.exe
-build/installer/NetGuard-Setup.exe
+build/installer/NetGuard-Setup.exebuild/exe-test/
+build/fake_meipass/
+build/fake_meipass2/
+build/temp-test/
+build/temp/
+build/exe/
+*.pyc
+__pycache__/
