@@ -1,149 +1,139 @@
-# NetGuard
+# NetGuard — Local-First Network Security Monitor
 
-Home network security monitor for Raspberry Pi. NetGuard continuously scans your local network using ARP, tracks every device, and exposes the data through a REST API.
+Professional-grade network security monitoring for home and SOHO networks. Runs on Raspberry Pi. No cloud dependency. No subscription required.
 
-## Project Structure
+---
+
+## Why NetGuard Exists
+
+Consumer network security tools have drifted toward subscription models and opaque cloud backends. Fing pivoted to paid tiers and discontinued Fingbox hardware. Bitdefender BOX has documented mesh reliability problems. Nothing in the consumer space offered transparent, non-cloud risk scoring with exportable audit evidence.
+
+NetGuard was built to fill that gap: local-first architecture, inspectable detection logic, and honest disclosure of what the system can and cannot see on a typical home LAN.
+
+---
+
+## What It Does
+
+Capabilities are grouped by outcome, not by internal module names.
+
+### Network Visibility
+
+Passive device discovery runs on 30-second ARP scan cycles, recording MAC, vendor, hostname, and online/offline state. OS fingerprinting infers device type and operating system from passive TCP SYN-ACK and DHCP signals—no active port scanning required for classification. Service version detection probes open HTTP, SSH, and TLS ports on a scheduled basis and records banners in the local database. Full DNS query capture covers all devices routed through the Pi's dnsmasq relay, with domain categorisation and per-device attribution.
+
+### Threat Detection
+
+Each device receives a composite risk score derived from open-port exposure, OS and category signals, trust status, and recent alerts—not a single CVE lookup. Threat intelligence uses the Steven Black unified hosts blocklist (~100k malicious domains), refreshed on a timer and matched against observed DNS queries. ARP spoofing detection flags unexpected MAC changes. Rogue DHCP detection identifies unauthorised DHCP servers. Inbound connection monitoring raises alerts on external connection attempts with per-device rate limits and pattern classification (single source vs. distributed scan). A policy engine evaluates network conditions continuously and can trigger automated response playbooks (isolation, repeated-threat alerts, incident email reports).
+
+### Enforcement
+
+Device blocking is implemented through the Linksys JNAP router API, confirmed working on Velop and similar mesh networks where ARP-level isolation is unreliable. When router enforcement is unavailable, DNS-based domain blocking provides a fallback. Per-device block and unblock is available from the dashboard and REST API.
+
+### Compliance & Reporting
+
+A GDPR Article 32 compliance report generates a structured PDF (asset inventory, controls, risk summary, incident log, automated actions, data-handling statement). SIEM integration exports alerts in RFC 5424 syslog format (UDP/TCP). A weekly email security summary covers the prior seven days when SMTP is configured. The alert workflow supports acknowledge, false-positive marking, and suppression rules with a full audit trail.
+
+### Security of the Tool Itself
+
+All write operations on the REST API require an `X-API-Key` header; keys are auto-generated on first start and stored in the local env file. Credentials are stored in an AES-256 encrypted vault (PBKDF2-HMAC-SHA256 key derivation). Password strength checking uses HIBP k-anonymity range queries—plaintext passwords never leave the host. Device inventory, DNS logs, and alerts remain on the local SQLite database; no cloud transmission unless MSP mode is explicitly configured. The database runs in WAL mode with a busy timeout to handle concurrent daemon writes safely.
+
+---
+
+## Architecture
+
+NetGuard uses a local-first daemon architecture: independent Python processes collect telemetry, write to a shared SQLite database, and expose data through a FastAPI REST backend. A React dashboard is served from the same host. Core monitoring does not depend on any external cloud service.
+
+On Raspberry Pi production deployments, nine monitoring daemons plus the API are managed by systemd (`netguard.target`). Threat-intel updates and weekly reports run on timers. Windows builds package the same logic as PyInstaller executables with scheduled-task auto-start.
 
 ```
-netguard/
-├── daemon/
-│   └── scanner/
-│       └── arp_scanner.py   # Continuous ARP network scanner
-├── api/
-│   └── main.py              # FastAPI REST server
-├── requirements.txt
-├── README.md
-└── netguard.db              # Created automatically on first scan
+[Network Devices] ──► [Raspberry Pi]
+                           ├── ARP Scanner (+ port scan cycle)
+                           ├── DNS Monitor (via dnsmasq)
+                           ├── OS Fingerprinting
+                           ├── Risk Scorer
+                           ├── Threat Intel
+                           ├── Policy Engine
+                           ├── Detection engines (ARP spoof, rogue DHCP, inbound)
+                           ├── FastAPI + Dashboard (:8000)
+                           └── [Browser on any LAN device]
+                                    │
+                           SQLite (WAL) ──► Syslog export (optional)
 ```
 
-## Requirements
+**Stack:** Python 3.10+, FastAPI, React/TypeScript, SQLite, Scapy, fpdf2. See `API.md` for the full REST surface.
 
-- Python 3.10+
-- Raspberry Pi (or any Linux host) on your local network
-- Root/sudo privileges (required for raw ARP socket access)
+---
 
-## Installation
+## Deployment
+
+### Raspberry Pi (Production)
 
 ```bash
-cd netguard
-python3 -m venv venv
-source venv/bin/activate        # Linux / Pi
-pip install -r requirements.txt
+sudo bash install/profiles/pi-home/install.sh
 ```
 
-## Usage
+Installs systemd units, dnsmasq relay, database under `/var/lib/netguard/`, and enables auto-start on boot. Dashboard: `http://<pi-ip>:8000`
 
-### 1. Start the ARP Scanner
+Detailed steps, service list, and troubleshooting: `install/pi/README.md`
 
-The scanner must run with elevated privileges:
+### Windows (Development / Testing)
 
-```bash
-sudo python3 daemon/scanner/arp_scanner.py
-```
-
-The scanner will:
-
-- Auto-detect your local subnet
-- Send ARP requests to find active devices every 30 seconds
-- Look up vendor names and hostnames for each device
-- Save results to `netguard.db`
-- Print a formatted table to the console
-- Tag new devices with `[NEW]` and missing devices with `[OFFLINE]`
-
-### 2. Start the API Server
-
-In a separate terminal:
-
-```bash
-python3 -m uvicorn api.main:app --host 0.0.0.0 --port 8000
-```
-
-Or from the `api/` directory:
-
-```bash
-cd api
-python3 main.py
-```
-
-### 3. Query the API
-
-| Endpoint           | Description                              |
-|--------------------|------------------------------------------|
-| `GET /devices`     | All discovered devices                   |
-| `GET /devices/new` | Devices first seen in the last 24 hours  |
-| `GET /alerts`      | New and offline device alerts            |
-
-Example:
-
-```bash
-curl http://localhost:8000/devices
-curl http://localhost:8000/devices/new
-curl http://localhost:8000/alerts
-```
-
-Interactive API docs are available at [http://localhost:8000/docs](http://localhost:8000/docs).
-
-## Device Data
-
-Each device record includes:
-
-| Field         | Description                          |
-|---------------|--------------------------------------|
-| `ip_address`  | Current IP on the network            |
-| `mac_address` | Hardware MAC address (unique key)    |
-| `vendor`      | Manufacturer from MAC OUI lookup       |
-| `hostname`    | Reverse DNS hostname (if available)  |
-| `first_seen`  | UTC timestamp of first discovery     |
-| `last_seen`   | UTC timestamp of most recent sighting|
-| `status`      | `online` or `offline`                |
-
-## Notes
-
-- ARP scanning requires root because Scapy uses raw sockets.
-- MAC vendor lookup uses [macvendors.com](https://macvendors.com) and is rate-limited on free tier; lookups are cached in the database after the first scan.
-- Hostname resolution depends on reverse DNS being configured on your network.
-- The API returns HTTP 503 until the scanner has created `netguard.db`.
-
-## Installation packages
-
-**Raspberry Pi:** see `install/pi/README.md` for one-step systemd install and `install/pi/NetGuard-Pi-Install-Guide.pdf`.
-
-**Windows:** build `NetGuard-Setup.exe` (v1.1.0) with:
+Build the installer:
 
 ```powershell
 .\build\windows\build-installer.ps1
 ```
 
-The installer bundles the API, ARP scanner, ARP spoof guard, and dashboard. Launch **NetGuard** from the Start Menu to open the dashboard.
+Output: `build/installer/NetGuard-Setup.exe` — bundles the API, daemons, dashboard, and Npcap prerequisite. Post-install, `Register-NetGuard-AutoStart.ps1` registers scheduled tasks for core services and packet-capture engines. Launch **NetGuard** from the Start Menu to open the dashboard at `http://127.0.0.1:8000`.
 
-## Network Blocking (disconnect devices)
+Windows is suitable for development and lab testing. Packet capture requires Npcap. Router-based enforcement is the recommended block path on Windows; ARP isolation is Pi-only.
 
-See `install/pi/README.md` for **one-step Raspberry Pi installation** with systemd auto-start.
+---
 
-By default, **Block** in the dashboard only hides a device from the UI on Windows. On Pi, run the block enforcer (optional systemd service):
+## Competitive Context
 
-```bash
-sudo python3 daemon/enforcement/network_blocker.py
-```
+NetGuard sits between Fing (subscription pivot, discontinued hardware, limited audit export) and Firewalla (effective but closed-box rules and proprietary cloud dependency). It targets operators who want open architecture, exportable compliance evidence, and transparent detection logic—including documented limitations such as mesh DNS proxying gaps and incomplete passive fingerprint coverage—that closed products typically do not publish.
 
-The enforcer watches `netguard.db` for devices with `is_blocked = 1` and isolates them using ARP cache poisoning (the device and router stop forwarding traffic to each other).
+For MSP operators, optional heartbeat mode (`NETGUARD_MSP_COLLECTOR_URL`) sends summary telemetry only; full DNS and device detail stays local unless separately integrated.
 
-**Requirements:**
+---
 
-- Linux host on the same LAN as blocked devices (typically your Pi)
-- Root/sudo privileges
-- ARP scanner and API should already be running
+## Design Decisions
 
-**Optional:** set a fixed gateway IP if auto-detection is wrong:
+**Local-first by default.** GDPR Article 32 evidence, no third-party cloud attack surface for core monitoring, and continued operation when upstream internet is unavailable. Cloud is opt-in, not assumed.
 
-```bash
-export NETGUARD_GATEWAY_IP=192.168.1.1
-sudo -E python3 daemon/enforcement/network_blocker.py
-```
+**No false CVE attribution.** Risk scoring uses confidence-tiered signals (open ports, OS guess confidence, device category, trust state). Port numbers map to reference guidance, not automatic CVE assignment—avoiding the false precision common in consumer scanners.
 
-**Limitations:**
+**Linksys JNAP over ARP isolation on mesh.** Consumer mesh networks break L2 isolation assumptions. NetGuard prioritises router API blocking (JNAP on Linksys Velop) where ARP cache poisoning is unreliable. ARP-based blocking remains available on Pi for flat LANs via an optional enforcer service.
 
-- Not supported on Windows.
-- Blocking is active only while the enforcer daemon is running.
-- Effectiveness depends on your router/AP (some guest networks use client isolation).
-- Unblocking in the dashboard restores UI visibility immediately; network access returns once the enforcer stops poisoning ARP (or after you unblock and the enforcer picks up the change within a few seconds).
+**RFC 5424 syslog over proprietary SIEM formats.** Alerts export to any standard syslog collector (Splunk, Elastic, Wazuh, rsyslog) without vendor lock-in.
+
+**API key on writes only.** Read endpoints stay open on localhost/LAN so the dashboard can poll without bootstrapping auth; mutating operations require explicit key configuration.
+
+---
+
+## Status
+
+**v1.2 — Production.** Running on a live home network (Raspberry Pi + Windows development host).
+
+**Known limitations**
+
+- DNS visibility requires traffic to pass through the Pi's dnsmasq relay; devices with hard-coded external DNS may bypass monitoring.
+- Passive OS fingerprinting does not cover all device types; unknown vendors and privacy-hardened phones often score as low-confidence.
+- Router enforcement currently targets Linksys JNAP; other vendors require manual integration or DNS-only blocking.
+- Banner grabbing runs on a 60-minute cycle and skips database service ports by design.
+- Windows packet capture depends on Npcap and administrator privileges for capture engines.
+
+**Roadmap**
+
+- **Phase 3:** Multi-site MSP dashboard and centralised policy management
+- **Phase 4:** Behavioural baseline and anomaly detection
+
+---
+
+## Author
+
+**Jibin Michael** — Network Security Engineer, Ireland
+
+[LinkedIn](https://www.linkedin.com/in/jibin-michael/)
+
+For API reference, see `API.md`. For Pi installation and service management, see `install/pi/README.md`.
