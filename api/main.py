@@ -1335,10 +1335,19 @@ def system_info() -> dict:
     else:
         platform_name = sys.platform
 
+    host_ip: str | None = None
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            host_ip = sock.getsockname()[0]
+    except OSError:
+        pass
+
     return {
         "platform": platform_name,
         "network_block_supported": platform_name != "windows",
         "hostname": socket.gethostname(),
+        "host_ip": host_ip,
     }
 
 

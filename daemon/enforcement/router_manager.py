@@ -28,6 +28,147 @@ _ROUTER_ENV_KEYS: dict[str, str] = {
     "router_token": "NETGUARD_ROUTER_TOKEN",
 }
 
+DNS_ONLY_ROUTER_TYPES: frozenset[str] = frozenset(
+    {"sky", "eir", "virgin", "bt", "asus", "netgear", "other"}
+)
+ROUTER_API_TYPES: frozenset[str] = frozenset(
+    {"linksys", "velop", "openwrt", "custom"}
+)
+SUPPORTED_ROUTER_TYPES: tuple[str, ...] = (
+    "linksys",
+    "openwrt",
+    "sky",
+    "eir",
+    "virgin",
+    "bt",
+    "asus",
+    "netgear",
+    "custom",
+    "other",
+)
+
+ROUTER_TYPE_META: dict[str, dict[str, str | bool]] = {
+    "linksys": {
+        "label": "Linksys JNAP",
+        "blocking_method": "router_api",
+        "setup_required": False,
+        "setup_instructions": "Automatic blocking via Linksys JNAP parental control API.",
+        "default_url": "http://192.168.1.1",
+    },
+    "velop": {
+        "label": "Linksys Velop",
+        "blocking_method": "router_api",
+        "setup_required": False,
+        "setup_instructions": "Automatic blocking via Linksys JNAP parental control API.",
+        "default_url": "http://192.168.1.1",
+    },
+    "openwrt": {
+        "label": "OpenWrt",
+        "blocking_method": "router_api",
+        "setup_required": False,
+        "setup_instructions": "Automatic blocking via OpenWrt ubus firewall rules.",
+        "default_url": "http://192.168.1.1",
+    },
+    "sky": {
+        "label": "Sky Hub",
+        "blocking_method": "dns_only",
+        "setup_required": True,
+        "setup_instructions": (
+            "Set Sky Hub primary DNS to your NetGuard Pi IP under Advanced → DNS Settings."
+        ),
+        "default_url": "http://192.168.0.1",
+    },
+    "eir": {
+        "label": "Eir F3000",
+        "blocking_method": "dns_only",
+        "setup_required": True,
+        "setup_instructions": (
+            "Set Eir F3000 primary DNS to your NetGuard Pi IP under Basic → WAN → DNS."
+        ),
+        "default_url": "http://192.168.1.1",
+    },
+    "virgin": {
+        "label": "Virgin Media Super Hub",
+        "blocking_method": "dns_only",
+        "setup_required": True,
+        "setup_instructions": (
+            "Set Virgin Super Hub primary DNS to your NetGuard Pi IP under "
+            "Basic Settings → Network → DNS."
+        ),
+        "default_url": "http://192.168.100.1",
+    },
+    "bt": {
+        "label": "BT Hub",
+        "blocking_method": "dns_only",
+        "setup_required": True,
+        "setup_instructions": (
+            "Set BT Hub primary DNS to your NetGuard Pi IP under Advanced Settings → DNS."
+        ),
+        "default_url": "http://192.168.1.254",
+    },
+    "asus": {
+        "label": "ASUS Router",
+        "blocking_method": "dns_only",
+        "setup_required": True,
+        "setup_instructions": (
+            "Set ASUS DNS Server 1 to your NetGuard Pi IP under LAN → DHCP → DNS and WINS."
+        ),
+        "default_url": "http://192.168.1.1",
+    },
+    "netgear": {
+        "label": "Netgear",
+        "blocking_method": "dns_only",
+        "setup_required": True,
+        "setup_instructions": (
+            "Set Netgear primary DNS to your NetGuard Pi IP under Internet → Domain Name Server."
+        ),
+        "default_url": "http://192.168.1.1",
+    },
+    "custom": {
+        "label": "Custom webhook",
+        "blocking_method": "router_api",
+        "setup_required": False,
+        "setup_instructions": "POST block/unblock events to your webhook URL.",
+        "default_url": "",
+    },
+    "other": {
+        "label": "Generic router",
+        "blocking_method": "dns_only",
+        "setup_required": True,
+        "setup_instructions": (
+            "Point your router's primary DNS to your NetGuard Pi IP in WAN or Advanced DNS settings."
+        ),
+        "default_url": "http://192.168.1.1",
+    },
+}
+
+
+def _detect_host_ip() -> str | None:
+    import socket
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            return sock.getsockname()[0]
+    except OSError:
+        return None
+
+
+def is_dns_only_router(router_type: str | None) -> bool:
+    return bool(router_type) and router_type.lower() in DNS_ONLY_ROUTER_TYPES
+
+
+def router_type_metadata(router_type: str | None) -> dict[str, str | bool]:
+    if not router_type:
+        return {
+            "label": "",
+            "blocking_method": "",
+            "setup_required": False,
+            "setup_instructions": "",
+            "default_url": "",
+        }
+    return ROUTER_TYPE_META.get(router_type.lower(), ROUTER_TYPE_META["other"])
+
 
 def _router_setting(db_path: str | None, key: str, *, default: str = "") -> str:
     """Read a router setting from environment (preferred) or notification_config."""
@@ -97,6 +238,9 @@ class RouterManager:
         self.router_password = _router_setting(db_path, "router_password")
 
     def block_device(self, device_ip: str, mac_address: str | None = None) -> EnforcementResult:
+        if is_dns_only_router(self.router_type):
+            return self._block_dns_only(device_ip)
+
         if self.router_type and self.router_url:
             result = self._block_via_router(device_ip, mac_address)
             if result.success:
@@ -119,6 +263,9 @@ class RouterManager:
         )
 
     def unblock_device(self, device_ip: str, mac_address: str | None = None) -> EnforcementResult:
+        if is_dns_only_router(self.router_type):
+            return self._unblock_dns_only(device_ip)
+
         if self.router_type and self.router_url:
             result = self._unblock_via_router(device_ip, mac_address)
             if result.success:
@@ -195,6 +342,40 @@ class RouterManager:
             method="pause",
             success=False,
             detail="Router pause requires NETGUARD_ROUTER_TYPE=linksys or openwrt.",
+        )
+
+    def _block_dns_only(self, device_ip: str) -> EnforcementResult:
+        dns_result = self._block_via_dns(device_ip)
+        if dns_result.success:
+            result = EnforcementResult(
+                method="dns_fallback",
+                success=True,
+                detail=(
+                    "Blocked via DNS — ensure Pi is set as DNS server in your router settings"
+                ),
+            )
+            self._log_enforcement(device_ip, result)
+            return result
+        return EnforcementResult(
+            method="dns_fallback",
+            success=False,
+            detail=dns_result.detail,
+        )
+
+    def _unblock_dns_only(self, device_ip: str) -> EnforcementResult:
+        dns_result = self._unblock_via_dns(device_ip)
+        if dns_result.success:
+            result = EnforcementResult(
+                method="dns_fallback",
+                success=True,
+                detail="DNS block removed on Pi.",
+            )
+            self._log_enforcement(device_ip, result)
+            return result
+        return EnforcementResult(
+            method="dns_fallback",
+            success=False,
+            detail=dns_result.detail,
         )
 
     def _block_via_router(
@@ -388,6 +569,7 @@ class RouterManager:
     def router_config_summary(db_path: str | None = None) -> dict:
         router_type = _router_setting(db_path, "router_type")
         router_url = _router_setting(db_path, "router_url")
+        meta = router_type_metadata(router_type)
         default_user = "admin" if router_type in ("linksys", "velop") else "root"
         router_user = (
             _router_setting(db_path, "router_user", default=default_user) or default_user
@@ -395,6 +577,14 @@ class RouterManager:
         router_password = _router_setting(db_path, "router_password")
         router_token = _router_setting(db_path, "router_token")
         env_overrides = _router_env_overrides(db_path)
+        blocking_method = str(meta.get("blocking_method") or "")
+        setup_required = bool(meta.get("setup_required"))
+        setup_instructions = str(meta.get("setup_instructions") or "")
+
+        if is_dns_only_router(router_type):
+            configured = bool(router_type)
+        else:
+            configured = bool(router_type and router_url)
 
         return {
             "router_type": router_type or None,
@@ -402,8 +592,12 @@ class RouterManager:
             "router_user": router_user or None,
             "router_password": "***" if router_password else None,
             "router_token": "***" if router_token else None,
-            "configured": bool(router_type and router_url),
-            "supported_types": ["openwrt", "linksys", "velop", "custom"],
+            "configured": configured,
+            "supported_types": list(SUPPORTED_ROUTER_TYPES),
+            "blocking_method": blocking_method or None,
+            "setup_required": setup_required,
+            "setup_instructions": setup_instructions,
+            "netguard_host_ip": _detect_host_ip(),
             "env_overrides": env_overrides,
             "env_keys": list(_ROUTER_ENV_KEYS.values()),
         }

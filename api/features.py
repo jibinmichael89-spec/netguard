@@ -783,11 +783,30 @@ def update_router_settings(body: RouterConfigUpdate) -> dict:
 
 @router.post("/settings/router/test", dependencies=[Depends(verify_api_key)])
 def test_router_connection() -> dict:
+    router_manager = _load_enforcement_module("router_manager")
+    is_dns_only_router = router_manager.is_dns_only_router
+
     mgr = _router_manager_cls()(_DB_PATH)
-    if not mgr.router_type or not mgr.router_url:
+    if not mgr.router_type:
         return {
             "success": False,
-            "detail": "Set router type and URL first, then save.",
+            "detail": "Set router type first, then save.",
+        }
+
+    if is_dns_only_router(mgr.router_type):
+        host_ip = router_manager._detect_host_ip() or "your NetGuard Pi IP"
+        return {
+            "success": True,
+            "detail": (
+                f"DNS-only router — no API login required. "
+                f"Set primary DNS to {host_ip} in your router admin panel."
+            ),
+        }
+
+    if not mgr.router_url:
+        return {
+            "success": False,
+            "detail": "Set router URL first, then save.",
         }
 
     try:

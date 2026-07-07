@@ -1,12 +1,22 @@
-# Build artifacts — never commit these
-build/installer/
-build/exe/
-build/exe-test/
-build/temp/
-build/temp-test/
-build/fake_meipass/
-build/fake_meipass2/
-build/reports/
-*.exe
+# Build artifacts
+build/
+dist/
+
+# Database files — contain private network data
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
 *.pyc
+*.pyo
 __pycache__/
+*.spec
+
+# Node
+node_modules/
+dashboard/dist/
+
+# Environment
+*.env
+.env

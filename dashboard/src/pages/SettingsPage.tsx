@@ -26,10 +26,104 @@ import type {
   RouterConfigUpdate,
   RouterSettingsResponse,
   SyslogSettingsResponse,
+  SystemInfoResponse,
   ThreatIntelStatusResponse,
 } from "../types";
 
 type Tab = "security" | "notifications" | "syslog" | "threat-intel" | "policies" | "router" | "reports";
+
+const ROUTER_OPTIONS: {
+  id: string;
+  label: string;
+  blockingMethod: "router_api" | "dns_only";
+  defaultUrl: string;
+}[] = [
+  { id: "linksys", label: "Linksys JNAP", blockingMethod: "router_api", defaultUrl: "http://192.168.1.1" },
+  { id: "openwrt", label: "OpenWrt", blockingMethod: "router_api", defaultUrl: "http://192.168.1.1" },
+  { id: "sky", label: "Sky Hub", blockingMethod: "dns_only", defaultUrl: "http://192.168.0.1" },
+  { id: "eir", label: "Eir F3000", blockingMethod: "dns_only", defaultUrl: "http://192.168.1.1" },
+  { id: "virgin", label: "Virgin Media Super Hub", blockingMethod: "dns_only", defaultUrl: "http://192.168.100.1" },
+  { id: "bt", label: "BT Hub", blockingMethod: "dns_only", defaultUrl: "http://192.168.1.254" },
+  { id: "asus", label: "ASUS Router", blockingMethod: "dns_only", defaultUrl: "http://192.168.1.1" },
+  { id: "netgear", label: "Netgear", blockingMethod: "dns_only", defaultUrl: "http://192.168.1.1" },
+  { id: "custom", label: "Custom webhook", blockingMethod: "router_api", defaultUrl: "" },
+  { id: "other", label: "Generic router", blockingMethod: "dns_only", defaultUrl: "http://192.168.1.1" },
+];
+
+const DNS_ONLY_ROUTER_TYPES = new Set(
+  ROUTER_OPTIONS.filter((option) => option.blockingMethod === "dns_only").map((option) => option.id),
+);
+
+function isDnsOnlyRouterType(routerType: string | null | undefined): boolean {
+  return Boolean(routerType && DNS_ONLY_ROUTER_TYPES.has(routerType.toLowerCase()));
+}
+
+function getDnsSetupSteps(routerType: string, piIp: string): string[] {
+  switch (routerType) {
+    case "sky":
+      return [
+        "Open http://192.168.0.1 in your browser",
+        "Enter your Sky Hub password",
+        "Go to Advanced → DNS Settings",
+        `Set Primary DNS to: ${piIp}`,
+        "Set Secondary DNS to: 1.1.1.1",
+        "Click Save and restart router",
+        "Device blocking will activate within 2 minutes",
+      ];
+    case "eir":
+      return [
+        "Open http://192.168.1.1 in your browser",
+        "Login: admin / your router password",
+        "Go to Basic → WAN → DNS",
+        `Set Primary DNS to: ${piIp}`,
+        "Set Secondary DNS to: 1.1.1.1",
+        "Click Apply",
+      ];
+    case "virgin":
+      return [
+        "Open http://192.168.100.1 in your browser",
+        "Login with your Virgin Media admin credentials",
+        "Go to Basic Settings → Network → DNS",
+        `Set Primary DNS to: ${piIp}`,
+        "Click Save",
+      ];
+    case "bt":
+      return [
+        "Open http://192.168.1.254 in your browser",
+        "Login with your BT Hub admin password",
+        "Go to Advanced Settings → DNS",
+        `Set Primary DNS to: ${piIp}`,
+        "Set Secondary DNS to: 1.1.1.1",
+        "Click Save and restart router if prompted",
+      ];
+    case "asus":
+      return [
+        "Open http://192.168.1.1 or http://router.asus.com in your browser",
+        "Login with your ASUS admin credentials",
+        "Go to LAN → DHCP Server → DNS and WINS Server Setting",
+        `Set DNS Server 1 to: ${piIp}`,
+        "Set DNS Server 2 to: 1.1.1.1",
+        "Click Apply",
+      ];
+    case "netgear":
+      return [
+        "Open http://192.168.1.1 or http://www.routerlogin.net in your browser",
+        "Login with your Netgear admin credentials",
+        "Go to Internet → Domain Name Server (DNS) Addresses",
+        `Set Primary DNS to: ${piIp}`,
+        "Set Secondary DNS to: 1.1.1.1",
+        "Click Apply",
+      ];
+    default:
+      return [
+        "Open your router admin panel (usually 192.168.1.1)",
+        "Find DNS Settings (usually under WAN or Advanced)",
+        `Set Primary DNS to: ${piIp}`,
+        "Set Secondary DNS to: 1.1.1.1",
+        "Save and restart",
+      ];
+  }
+}
 
 const TABS: { id: Tab; label: string; icon: typeof Bell }[] = [
   { id: "security", label: "API key", icon: KeyRound },
@@ -76,6 +170,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [restartingApi, setRestartingApi] = useState(false);
   const [testingRouter, setTestingRouter] = useState(false);
+  const [netguardHostIp, setNetguardHostIp] = useState<string | null>(null);
   const [updatingIntel, setUpdatingIntel] = useState(false);
   const [generatingCompliance, setGeneratingCompliance] = useState(false);
 
@@ -84,12 +179,13 @@ export default function SettingsPage() {
     setError(undefined);
     const errors: string[] = [];
 
-    const [notif, syslog, intel, policyData, router] = await Promise.allSettled([
+    const [notif, syslog, intel, policyData, router, systemInfo] = await Promise.allSettled([
       apiFetch<NotificationConfigResponse>("/notifications/config"),
       apiFetch<SyslogSettingsResponse>("/settings/syslog"),
       apiFetch<ThreatIntelStatusResponse>("/threat-intel/status"),
       apiFetch<PoliciesResponse>("/policies"),
       apiFetch<RouterSettingsResponse>("/settings/router"),
+      apiFetch<SystemInfoResponse>("/system/info"),
     ]);
 
     if (notif.status === "fulfilled") {
@@ -133,6 +229,15 @@ export default function SettingsPage() {
       });
     } else {
       errors.push("Router");
+    }
+
+    if (systemInfo.status === "fulfilled") {
+      setNetguardHostIp(
+        systemInfo.value.host_ip ??
+          (router.status === "fulfilled" ? router.value.netguard_host_ip : null),
+      );
+    } else if (router.status === "fulfilled") {
+      setNetguardHostIp(router.value.netguard_host_ip);
     }
 
     if (errors.length > 0) {
@@ -374,6 +479,10 @@ export default function SettingsPage() {
       const next = { ...prev, [key]: value };
       if (key === "router_type") {
         const type = value.toLowerCase();
+        const option = ROUTER_OPTIONS.find((entry) => entry.id === type);
+        if (option?.defaultUrl && !prev.router_url?.trim()) {
+          next.router_url = option.defaultUrl;
+        }
         const user = (prev.router_user || "").trim();
         if (type === "linksys" || type === "velop") {
           if (!user || user === "root") {
@@ -431,6 +540,9 @@ export default function SettingsPage() {
         router_password: updated.router_password || "",
         router_token: updated.router_token || "",
       });
+      if (updated.netguard_host_ip) {
+        setNetguardHostIp(updated.netguard_host_ip);
+      }
 
       if (!restartAfter) {
         setMessage("Router settings saved");
@@ -872,8 +984,8 @@ export default function SettingsPage() {
             <div>
               <h3 className="text-lg font-semibold text-white">Router enforcement</h3>
               <p className="mt-1 text-sm text-gray-400">
-                Block devices on your router when you click Block in the dashboard.
-                Supports OpenWrt, Linksys/Velop, and custom webhooks.
+                Block devices via router API (Linksys, OpenWrt) or DNS-based blocking for
+                ISP hubs (Sky, Eir, Virgin, BT, and others).
               </p>
             </div>
             <span
@@ -905,70 +1017,145 @@ export default function SettingsPage() {
                 onChange={(e) => updateRouterField("router_type", e.target.value)}
               >
                 <option value="">Disabled (dashboard-only block)</option>
-                {routerSettings.supported_types.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
+                {ROUTER_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                    {option.blockingMethod === "dns_only" ? " (DNS blocking)" : ""}
                   </option>
                 ))}
               </select>
             </label>
-            <label className="block text-sm sm:col-span-2">
-              <span className="text-gray-400">Router URL</span>
-              <input
-                className="mt-1 w-full rounded-lg border border-ng-border bg-ng-bg px-3 py-2 text-white"
-                value={routerForm.router_url || ""}
-                onChange={(e) => updateRouterField("router_url", e.target.value)}
-                placeholder="http://192.168.1.1"
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="text-gray-400">Username</span>
-              <input
-                className="mt-1 w-full rounded-lg border border-ng-border bg-ng-bg px-3 py-2 text-white"
-                value={routerForm.router_user || ""}
-                onChange={(e) => updateRouterField("router_user", e.target.value)}
-                placeholder="admin (Linksys) or root (OpenWrt)"
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="text-gray-400">Password</span>
-              <input
-                type="password"
-                className="mt-1 w-full rounded-lg border border-ng-border bg-ng-bg px-3 py-2 text-white"
-                value={routerForm.router_password || ""}
-                onChange={(e) => updateRouterField("router_password", e.target.value)}
-                placeholder="Router admin password"
-              />
-            </label>
-            <label className="block text-sm sm:col-span-2">
-              <span className="text-gray-400">API token (optional)</span>
-              <input
-                type="password"
-                className="mt-1 w-full rounded-lg border border-ng-border bg-ng-bg px-3 py-2 text-white"
-                value={routerForm.router_token || ""}
-                onChange={(e) => updateRouterField("router_token", e.target.value)}
-                placeholder="OpenWrt ubus token or webhook bearer token"
-              />
-            </label>
+
+            {isDnsOnlyRouterType(routerForm.router_type) && (
+              <div className="sm:col-span-2 rounded-lg border border-sky-500/30 bg-sky-500/10 px-4 py-4 space-y-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-sky-100">
+                    DNS Blocking Setup Required
+                  </h4>
+                  {routerSettings.setup_instructions && (
+                    <p className="mt-1 text-xs text-sky-200/80">
+                      {routerSettings.setup_instructions}
+                    </p>
+                  )}
+                </div>
+                <ol className="list-decimal list-inside space-y-1.5 text-sm text-sky-100/90">
+                  {getDnsSetupSteps(
+                    routerForm.router_type || "other",
+                    netguardHostIp || routerSettings.netguard_host_ip || "your Pi IP address",
+                  ).map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ol>
+                {!netguardHostIp && !routerSettings.netguard_host_ip && (
+                  <p className="text-xs text-amber-200">
+                    NetGuard host IP could not be detected automatically. Replace &quot;your Pi
+                    IP address&quot; with the IP shown on your Pi (
+                    <code>hostname -I</code>).
+                  </p>
+                )}
+              </div>
+            )}
+
+            {!isDnsOnlyRouterType(routerForm.router_type) &&
+              routerForm.router_type &&
+              routerForm.router_type !== "custom" && (
+              <>
+                <label className="block text-sm sm:col-span-2">
+                  <span className="text-gray-400">Router URL</span>
+                  <input
+                    className="mt-1 w-full rounded-lg border border-ng-border bg-ng-bg px-3 py-2 text-white"
+                    value={routerForm.router_url || ""}
+                    onChange={(e) => updateRouterField("router_url", e.target.value)}
+                    placeholder="http://192.168.1.1"
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="text-gray-400">Username</span>
+                  <input
+                    className="mt-1 w-full rounded-lg border border-ng-border bg-ng-bg px-3 py-2 text-white"
+                    value={routerForm.router_user || ""}
+                    onChange={(e) => updateRouterField("router_user", e.target.value)}
+                    placeholder="admin (Linksys) or root (OpenWrt)"
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="text-gray-400">Password</span>
+                  <input
+                    type="password"
+                    className="mt-1 w-full rounded-lg border border-ng-border bg-ng-bg px-3 py-2 text-white"
+                    value={routerForm.router_password || ""}
+                    onChange={(e) => updateRouterField("router_password", e.target.value)}
+                    placeholder="Router admin password"
+                  />
+                </label>
+                <label className="block text-sm sm:col-span-2">
+                  <span className="text-gray-400">API token (optional)</span>
+                  <input
+                    type="password"
+                    className="mt-1 w-full rounded-lg border border-ng-border bg-ng-bg px-3 py-2 text-white"
+                    value={routerForm.router_token || ""}
+                    onChange={(e) => updateRouterField("router_token", e.target.value)}
+                    placeholder="OpenWrt ubus token"
+                  />
+                </label>
+              </>
+            )}
+
+            {routerForm.router_type === "custom" && (
+              <>
+                <label className="block text-sm sm:col-span-2">
+                  <span className="text-gray-400">Webhook URL</span>
+                  <input
+                    className="mt-1 w-full rounded-lg border border-ng-border bg-ng-bg px-3 py-2 text-white"
+                    value={routerForm.router_url || ""}
+                    onChange={(e) => updateRouterField("router_url", e.target.value)}
+                    placeholder="https://your-server/block-webhook"
+                  />
+                </label>
+                <label className="block text-sm sm:col-span-2">
+                  <span className="text-gray-400">Bearer token (optional)</span>
+                  <input
+                    type="password"
+                    className="mt-1 w-full rounded-lg border border-ng-border bg-ng-bg px-3 py-2 text-white"
+                    value={routerForm.router_token || ""}
+                    onChange={(e) => updateRouterField("router_token", e.target.value)}
+                    placeholder="Webhook bearer token"
+                  />
+                </label>
+              </>
+            )}
           </div>
 
-          <p className="text-xs text-gray-500">
-            OpenWrt uses ubus login or token. Linksys/Velop uses JNAP at{" "}
-            <code>http://192.168.1.1</code> with username <code>admin</code> and your router
-            password. Works on Windows and Pi when NetGuard can reach the router on your LAN.
-            BT/Virgin/Sky hubs usually do not support API block.
-          </p>
+          {!isDnsOnlyRouterType(routerForm.router_type) && routerForm.router_type && (
+            <p className="text-xs text-gray-500">
+              OpenWrt uses ubus login or token. Linksys uses JNAP at{" "}
+              <code>http://192.168.1.1</code> with username <code>admin</code> and your router
+              password. Works when NetGuard can reach the router on your LAN.
+            </p>
+          )}
+
+          {isDnsOnlyRouterType(routerForm.router_type) && (
+            <p className="text-xs text-gray-500">
+              DNS blocking drops queries from blocked devices on the Pi (iptables). Your router
+              must use the NetGuard Pi as primary DNS — follow the setup guide above. Blocking
+              activates within about 2 minutes after DNS changes propagate.
+            </p>
+          )}
 
           <div className="flex flex-wrap gap-3 pt-2">
-            <button
-              type="button"
-              onClick={() => void testRouterConnection()}
-              disabled={testingRouter || saving || restartingApi}
-              className="flex items-center gap-2 rounded-lg border border-ng-border px-4 py-2 text-sm font-medium text-gray-300 hover:text-white disabled:opacity-50"
-            >
-              <Send className="h-4 w-4" />
-              Test router login
-            </button>
+            {routerForm.router_type && (
+              <button
+                type="button"
+                onClick={() => void testRouterConnection()}
+                disabled={testingRouter || saving || restartingApi}
+                className="flex items-center gap-2 rounded-lg border border-ng-border px-4 py-2 text-sm font-medium text-gray-300 hover:text-white disabled:opacity-50"
+              >
+                <Send className="h-4 w-4" />
+                {isDnsOnlyRouterType(routerForm.router_type)
+                  ? "Verify DNS setup"
+                  : "Test router login"}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => void saveRouterSettings(false)}

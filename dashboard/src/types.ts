@@ -50,6 +50,7 @@ export interface SystemInfoResponse {
   platform: "windows" | "linux" | "darwin" | string;
   network_block_supported: boolean;
   hostname: string;
+  host_ip?: string | null;
 }
 
 export interface DevicesResponse {
@@ -310,6 +311,10 @@ export interface RouterSettingsResponse {
   router_token: string | null;
   configured: boolean;
   supported_types: string[];
+  blocking_method: "router_api" | "dns_only" | null;
+  setup_required: boolean;
+  setup_instructions: string;
+  netguard_host_ip: string | null;
   env_overrides: string[];
   env_keys: string[];
 }
