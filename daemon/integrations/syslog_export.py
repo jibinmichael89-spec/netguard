@@ -1,27 +1,40 @@
 #!/usr/bin/env python3
 """
-Forward NetGuard security alerts to an external syslog server (RFC 5424).
+Forward NetGuard security alerts to external SIEM targets.
 
-Polls the alerts table every 30 seconds and sends new rows to a configured
-UDP or TCP syslog receiver (Wazuh, Elastic, Splunk, rsyslog, etc.).
+Supports:
+- RFC 5424 syslog (UDP/TCP) via rsyslog, Splunk, Elastic, Wazuh, etc.
+- Microsoft Sentinel / Log Analytics via the Data Collector HTTP API
+
+Polls the alerts table every 30 seconds and forwards new rows to every
+configured destination. Syslog and Sentinel can run simultaneously.
 """
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import json
 import os
 import socket
 import sqlite3
 import sys
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from email.utils import formatdate
 from pathlib import Path
 
 POLL_INTERVAL_SECONDS = 30
 SYSLOG_FACILITY = 16  # local0
 SYSLOG_ENTERPRISE_ID = 32473
 APP_NAME = "NetGuard"
+SENTINEL_API_VERSION = "2016-04-01"
+SENTINEL_COMPUTER = "netguard-pi"
+DEFAULT_SENTINEL_LOG_TYPE = "NetGuard"
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -46,12 +59,31 @@ class SyslogConfig:
         return self.enabled and bool(self.host.strip()) and self.port > 0
 
 
-def _state_file_path(db_path: str) -> str:
+@dataclass
+class SentinelConfig:
+    workspace_id: str
+    primary_key: str
+    log_type: str
+
+    @property
+    def is_usable(self) -> bool:
+        return bool(self.workspace_id.strip() and self.primary_key.strip())
+
+    @property
+    def endpoint(self) -> str:
+        return (
+            f"https://{self.workspace_id.strip()}.ods.opinsights.azure.com"
+            f"/api/logs?api-version={SENTINEL_API_VERSION}"
+        )
+
+
+def _state_file_path(db_path: str, channel: str) -> str:
+    filename = f"{channel}_export.state"
     if sys.platform == "win32":
         program_data = os.environ.get("ProgramData", r"C:\ProgramData")
-        return os.path.join(program_data, "NetGuard", "syslog_export.state")
+        return os.path.join(program_data, "NetGuard", filename)
     directory = os.path.dirname(os.path.abspath(db_path)) or str(PROJECT_ROOT)
-    return os.path.join(directory, "syslog_export.state")
+    return os.path.join(directory, filename)
 
 
 def load_state(path: str) -> int:
@@ -92,6 +124,18 @@ def load_syslog_config() -> SyslogConfig:
     )
 
 
+def load_sentinel_config() -> SentinelConfig:
+    from netguard_env import load_and_apply_env_file
+
+    load_and_apply_env_file()
+    log_type = os.environ.get("NETGUARD_SENTINEL_LOG_TYPE", DEFAULT_SENTINEL_LOG_TYPE).strip()
+    return SentinelConfig(
+        workspace_id=os.environ.get("NETGUARD_SENTINEL_WORKSPACE_ID", "").strip(),
+        primary_key=os.environ.get("NETGUARD_SENTINEL_PRIMARY_KEY", "").strip(),
+        log_type=log_type or DEFAULT_SENTINEL_LOG_TYPE,
+    )
+
+
 def severity_to_syslog_level(severity: str | None) -> int:
     normalized = (severity or "").strip().upper()
     if normalized == "CRITICAL":
@@ -111,6 +155,106 @@ def _sd_escape(value: str) -> str:
         .replace('"', '\\"')
         .replace("]", "\\]")
     )
+
+
+def _normalize_timestamp(value: str | None) -> str:
+    if not value:
+        return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def alert_to_sentinel_record(alert: dict) -> dict[str, str]:
+    """Map a NetGuard alert row to Sentinel custom log fields."""
+    return {
+        "AlertType": str(alert.get("alert_type") or ""),
+        "Severity": str(alert.get("severity") or ""),
+        "DeviceIP": str(alert.get("device_ip") or ""),
+        "Description": str(alert.get("description") or ""),
+        "TimeGenerated": _normalize_timestamp(alert.get("timestamp")),
+        "Computer": SENTINEL_COMPUTER,
+    }
+
+
+def build_sentinel_authorization(
+    workspace_id: str,
+    primary_key: str,
+    content_length: int,
+    date_header: str,
+) -> str:
+    """Build SharedKey authorization header for Log Analytics Data Collector API."""
+    string_to_hash = (
+        f"POST\n{content_length}\napplication/json\nx-ms-date:{date_header}\n/api/logs"
+    )
+    decoded_key = base64.b64decode(primary_key)
+    encoded_signature = base64.b64encode(
+        hmac.new(
+            decoded_key,
+            string_to_hash.encode("utf-8"),
+            hashlib.sha256,
+        ).digest()
+    ).decode("ascii")
+    return f"SharedKey {workspace_id}:{encoded_signature}"
+
+
+def send_to_sentinel_http(alert_data: dict, config: SentinelConfig | None = None) -> bool:
+    """
+    POST one alert to Microsoft Sentinel via the Log Analytics Data Collector API.
+
+    Returns True on HTTP 200, False on configuration or transport errors.
+    """
+    if config is None:
+        config = load_sentinel_config()
+    if not config.is_usable:
+        return False
+
+    body = json.dumps([alert_to_sentinel_record(alert_data)], separators=(",", ":")).encode(
+        "utf-8"
+    )
+    date_header = formatdate(timeval=None, localtime=False, usegmt=True)
+    authorization = build_sentinel_authorization(
+        config.workspace_id,
+        config.primary_key,
+        len(body),
+        date_header,
+    )
+
+    request = urllib.request.Request(
+        config.endpoint,
+        data=body,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "Log-Type": config.log_type,
+            "x-ms-date": date_header,
+            "Authorization": authorization,
+        },
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return response.status == 200
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:500]
+        print(
+            f"[!] Sentinel HTTP {exc.code} for alert id={alert_data.get('id')}: {detail}",
+            flush=True,
+        )
+        return False
+    except urllib.error.URLError as exc:
+        print(
+            f"[!] Sentinel HTTP failed for alert id={alert_data.get('id')}: {exc.reason}",
+            flush=True,
+        )
+        return False
+    except OSError as exc:
+        print(
+            f"[!] Sentinel HTTP failed for alert id={alert_data.get('id')}: {exc}",
+            flush=True,
+        )
+        return False
 
 
 def format_rfc5424_message(alert: dict, hostname: str, pid: int) -> str:
@@ -200,12 +344,12 @@ class SyslogSender:
             sock.sendto(data, (self.config.host, self.config.port))
 
 
-def export_pending_alerts(db_path: str, config: SyslogConfig) -> int:
-    """Send unsent alerts; return count forwarded."""
+def export_pending_alerts_syslog(db_path: str, config: SyslogConfig) -> int:
+    """Send unsent alerts via syslog; return count forwarded."""
     if not config.is_usable:
         return 0
 
-    state_path = _state_file_path(db_path)
+    state_path = _state_file_path(db_path, "syslog")
     last_id = load_state(state_path)
     alerts = fetch_new_alerts(db_path, last_id)
     if not alerts:
@@ -228,27 +372,79 @@ def export_pending_alerts(db_path: str, config: SyslogConfig) -> int:
     return sent
 
 
+def export_pending_alerts_sentinel(db_path: str, config: SentinelConfig) -> int:
+    """Send unsent alerts to Microsoft Sentinel; return count forwarded."""
+    if not config.is_usable:
+        return 0
+
+    state_path = _state_file_path(db_path, "sentinel")
+    last_id = load_state(state_path)
+    alerts = fetch_new_alerts(db_path, last_id)
+    if not alerts:
+        return 0
+
+    sent = 0
+    highest_id = last_id
+    for alert in alerts:
+        if send_to_sentinel_http(alert, config):
+            sent += 1
+            highest_id = int(alert["id"])
+        else:
+            # Stop at first failure so unsent alerts are retried next cycle.
+            break
+
+    if sent:
+        save_state(state_path, highest_id)
+    return sent
+
+
+def export_pending_alerts(db_path: str, config: SyslogConfig) -> int:
+    """Backward-compatible alias for syslog-only export."""
+    return export_pending_alerts_syslog(db_path, config)
+
+
 def run_loop(db_path: str) -> None:
-    print("NetGuard Syslog Export starting...")
+    print("NetGuard SIEM Export starting...")
     print(f"Database: {db_path}")
     print(f"Poll interval: {POLL_INTERVAL_SECONDS}s")
+    print("Transports: syslog (RFC 5424), Microsoft Sentinel (HTTPS)")
     print("Press Ctrl+C to stop.\n")
 
     while True:
-        config = load_syslog_config()
-        if config.is_usable:
+        from netguard_env import load_and_apply_env_file
+
+        load_and_apply_env_file()
+        syslog_config = load_syslog_config()
+        sentinel_config = load_sentinel_config()
+
+        if not syslog_config.is_usable and not sentinel_config.is_usable:
+            time.sleep(POLL_INTERVAL_SECONDS)
+            continue
+
+        now = datetime.now(timezone.utc).isoformat()
+
+        if syslog_config.is_usable:
             try:
-                count = export_pending_alerts(db_path, config)
+                count = export_pending_alerts_syslog(db_path, syslog_config)
                 if count:
                     print(
-                        f"[{datetime.now(timezone.utc).isoformat()}] "
-                        f"Forwarded {count} alert(s) to "
-                        f"{config.protocol}://{config.host}:{config.port}"
+                        f"[{now}] Forwarded {count} alert(s) via syslog to "
+                        f"{syslog_config.protocol}://{syslog_config.host}:{syslog_config.port}"
                     )
             except OSError as exc:
                 print(f"[!] Syslog send failed: {exc}")
-        else:
-            pass  # idle until enabled via Settings or netguard.env
+
+        if sentinel_config.is_usable:
+            try:
+                count = export_pending_alerts_sentinel(db_path, sentinel_config)
+                if count:
+                    print(
+                        f"[{now}] Forwarded {count} alert(s) to Microsoft Sentinel "
+                        f"(workspace {sentinel_config.workspace_id}, "
+                        f"log type {sentinel_config.log_type})"
+                    )
+            except OSError as exc:
+                print(f"[!] Sentinel export failed: {exc}")
 
         time.sleep(POLL_INTERVAL_SECONDS)
 
@@ -263,7 +459,7 @@ def main() -> None:
     try:
         run_loop(db_path)
     except KeyboardInterrupt:
-        print("\n[*] Syslog export stopped.")
+        print("\n[*] SIEM export stopped.")
         sys.exit(0)
 
 
