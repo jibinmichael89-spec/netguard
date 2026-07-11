@@ -1,7 +1,7 @@
 [Unit]
 Description=NetGuard Home Network Security Monitor
 Documentation=file:///opt/netguard/README.md
-Wants=netguard-api.service netguard-arp-scanner.service netguard-risk-scorer.service netguard-dns-monitor.service netguard-arp-spoof.service netguard-rogue-dhcp.service netguard-inbound-detector.service netguard-policy-engine.service netguard-syslog-export.service
+Wants=netguard-api.service netguard-arp-scanner.service netguard-risk-scorer.service netguard-dns-monitor.service netguard-arp-spoof.service netguard-rogue-dhcp.service netguard-inbound-detector.service netguard-policy-engine.service netguard-syslog-export.service netguard-sentinel-export.service
 After=network-online.target
 
 [Install]

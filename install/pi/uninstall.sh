@@ -34,6 +34,7 @@ for unit in netguard.target netguard-api.service netguard-arp-scanner.service \
     netguard-risk-scorer.service netguard-dns-monitor.service \
     netguard-arp-spoof.service netguard-rogue-dhcp.service \
     netguard-inbound-detector.service netguard-policy-engine.service \
+    netguard-syslog-export.service netguard-sentinel-export.service \
     netguard-threat-intel.service netguard-threat-intel.timer \
     netguard-network-blocker.service; do
     rm -f "/etc/systemd/system/$unit"

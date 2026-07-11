@@ -228,6 +228,7 @@ install_systemd_units() {
         netguard-risk-scorer.service netguard-dns-monitor.service \
         netguard-arp-spoof.service netguard-rogue-dhcp.service \
         netguard-inbound-detector.service netguard-policy-engine.service \
+        netguard-syslog-export.service netguard-sentinel-export.service \
         netguard-threat-intel.service netguard-threat-intel.timer \
         netguard-weekly-report.service netguard-weekly-report.timer \
         netguard-msp-agent.service netguard-msp-agent.timer \

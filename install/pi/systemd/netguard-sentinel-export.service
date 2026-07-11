@@ -1,0 +1,16 @@
+[Unit]
+Description=NetGuard Microsoft Sentinel Export
+After=netguard-api.service
+
+[Service]
+Type=simple
+User=netguard
+WorkingDirectory=/opt/netguard
+Environment=PYTHONPATH=/opt/netguard/daemon
+EnvironmentFile=-/etc/netguard/netguard.env
+ExecStart=/opt/netguard/venv/bin/python daemon/integrations/syslog_export.py sentinel
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=netguard.target
