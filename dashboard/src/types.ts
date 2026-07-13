@@ -340,6 +340,16 @@ export interface SyslogSettingsResponse {
   configured: boolean;
 }
 
+export interface SentinelSettingsResponse {
+  enabled: boolean;
+  workspace_id: string;
+  primary_key: string | null;
+  log_type: string;
+  env_file: string;
+  configured: boolean;
+  service_active: boolean | null;
+}
+
 export interface MspSite {
   site_id: string;
   site_name: string | null;

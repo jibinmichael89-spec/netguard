@@ -117,6 +117,13 @@ class SyslogConfigUpdate(BaseModel):
     protocol: Literal["udp", "tcp"] | None = None
 
 
+class SentinelConfigUpdate(BaseModel):
+    enabled: bool | None = None
+    workspace_id: str | None = None
+    primary_key: str | None = None
+    log_type: str | None = None
+
+
 def get_syslog_settings() -> dict[str, Any]:
     from netguard_env import env_bool, load_and_apply_env_file, netguard_env_file_path
 
@@ -171,6 +178,150 @@ def save_syslog_settings(body: SyslogConfigUpdate) -> list[str]:
         )
 
     write_env_file_values(updates)
+    return list(updates.keys())
+
+
+def _sentinel_service_active() -> bool | None:
+    if sys.platform == "win32":
+        return None
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["/bin/systemctl", "is-active", "--quiet", "netguard-sentinel-export.service"],
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return result.returncode == 0
+
+
+def _restart_sentinel_export_service() -> None:
+    if sys.platform == "win32":
+        return
+
+    import subprocess
+
+    for command in (
+        ["sudo", "-n", "/bin/systemctl", "enable", "netguard-sentinel-export.service"],
+        ["sudo", "-n", "/bin/systemctl", "restart", "netguard-sentinel-export.service"],
+    ):
+        try:
+            subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            break
+
+
+def get_sentinel_settings() -> dict[str, Any]:
+    from netguard_env import env_bool, load_and_apply_env_file, netguard_env_file_path
+
+    load_and_apply_env_file()
+    workspace_id = os.environ.get("NETGUARD_SENTINEL_WORKSPACE_ID", "").strip()
+    primary_key = os.environ.get("NETGUARD_SENTINEL_PRIMARY_KEY", "").strip()
+    log_type = (
+        os.environ.get("NETGUARD_SENTINEL_LOG_TYPE", "NetGuard").strip() or "NetGuard"
+    )
+    enabled_env = os.environ.get("NETGUARD_SENTINEL_ENABLED")
+    if enabled_env is None:
+        enabled = bool(workspace_id and primary_key)
+    else:
+        enabled = env_bool(enabled_env)
+    configured = enabled and bool(workspace_id and primary_key)
+    return {
+        "enabled": enabled,
+        "workspace_id": workspace_id,
+        "primary_key": "***" if primary_key else None,
+        "log_type": log_type,
+        "env_file": netguard_env_file_path(),
+        "configured": configured,
+        "service_active": _sentinel_service_active(),
+    }
+
+
+def save_sentinel_settings(body: SentinelConfigUpdate) -> list[str]:
+    from netguard_env import (
+        env_bool,
+        load_and_apply_env_file,
+        read_env_file_values,
+        write_env_file_values,
+    )
+
+    load_and_apply_env_file()
+    existing = read_env_file_values()
+    updates: dict[str, str] = {}
+
+    if body.enabled is not None:
+        updates["NETGUARD_SENTINEL_ENABLED"] = "true" if body.enabled else "false"
+    if body.workspace_id is not None:
+        updates["NETGUARD_SENTINEL_WORKSPACE_ID"] = body.workspace_id.strip()
+    if body.log_type is not None:
+        updates["NETGUARD_SENTINEL_LOG_TYPE"] = body.log_type.strip() or "NetGuard"
+    if body.primary_key is not None:
+        key = body.primary_key.strip()
+        if key and key != "***":
+            updates["NETGUARD_SENTINEL_PRIMARY_KEY"] = key
+
+    if not updates:
+        return []
+
+    effective_enabled = body.enabled
+    if effective_enabled is None:
+        enabled_env = os.environ.get("NETGUARD_SENTINEL_ENABLED")
+        if enabled_env is None:
+            effective_enabled = bool(
+                (body.workspace_id or os.environ.get("NETGUARD_SENTINEL_WORKSPACE_ID", "")).strip()
+                and (
+                    existing.get("NETGUARD_SENTINEL_PRIMARY_KEY")
+                    or os.environ.get("NETGUARD_SENTINEL_PRIMARY_KEY", "")
+                ).strip()
+            )
+        else:
+            effective_enabled = env_bool(enabled_env)
+
+    effective_workspace = (
+        body.workspace_id
+        if body.workspace_id is not None
+        else os.environ.get("NETGUARD_SENTINEL_WORKSPACE_ID", "")
+    ).strip()
+    effective_key = updates.get("NETGUARD_SENTINEL_PRIMARY_KEY")
+    if effective_key is None:
+        effective_key = (
+            existing.get("NETGUARD_SENTINEL_PRIMARY_KEY")
+            or os.environ.get("NETGUARD_SENTINEL_PRIMARY_KEY", "")
+        ).strip()
+
+    if effective_enabled:
+        if not effective_workspace:
+            raise HTTPException(
+                status_code=400,
+                detail="Workspace ID is required when Sentinel export is enabled",
+            )
+        if not effective_key:
+            raise HTTPException(
+                status_code=400,
+                detail="Primary key is required when Sentinel export is enabled",
+            )
+
+    write_env_file_values(updates)
+    if effective_enabled and effective_workspace and effective_key:
+        _restart_sentinel_export_service()
+    elif body.enabled is False:
+        if sys.platform != "win32":
+            import subprocess
+
+            try:
+                subprocess.run(
+                    ["sudo", "-n", "/bin/systemctl", "stop", "netguard-sentinel-export.service"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+
     return list(updates.keys())
 
 
@@ -857,6 +1008,51 @@ def test_router_connection() -> dict:
         }
     except Exception as exc:
         return {"success": False, "detail": str(exc)}
+
+
+@router.get("/settings/sentinel")
+def sentinel_settings() -> dict:
+    return get_sentinel_settings()
+
+
+@router.put("/settings/sentinel", dependencies=[Depends(verify_api_key)])
+def update_sentinel_settings(body: SentinelConfigUpdate) -> dict:
+    updated = save_sentinel_settings(body)
+    return {"success": True, "updated_keys": updated, **get_sentinel_settings()}
+
+
+@router.post("/settings/sentinel/test", dependencies=[Depends(verify_api_key)])
+def test_sentinel_export() -> dict:
+    integrations_dir = os.path.join(_features_daemon, "integrations")
+    if integrations_dir not in sys.path:
+        sys.path.insert(0, integrations_dir)
+    from syslog_export import SentinelExporter
+
+    exporter = SentinelExporter()
+    if not exporter.is_configured:
+        raise HTTPException(
+            status_code=400,
+            detail="Configure workspace ID and primary key, then save before testing.",
+        )
+
+    ok = exporter.send_alert(
+        {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "severity": "Info",
+            "alert_type": "test",
+            "device_ip": "127.0.0.1",
+            "description": "NetGuard Sentinel test — your settings are working.",
+        }
+    )
+    if not ok:
+        raise HTTPException(
+            status_code=502,
+            detail="Sentinel rejected the test alert. Check workspace ID and primary key.",
+        )
+    return {
+        "success": True,
+        "message": "Test alert sent to Microsoft Sentinel (HTTP 200).",
+    }
 
 
 @router.post("/settings/restart-api", dependencies=[Depends(verify_api_key)])

@@ -189,6 +189,15 @@ NETGUARD_REQUIRE_DEVICE_APPROVAL=1
 # NETGUARD_SITE_ID=default
 # MSP admin key for POST /msp/sites/register
 # NETGUARD_MSP_ADMIN_KEY=
+# Syslog / SIEM export (optional)
+# NETGUARD_SYSLOG_ENABLED=false
+# NETGUARD_SYSLOG_HOST=192.168.1.10
+# NETGUARD_SYSLOG_PORT=514
+# NETGUARD_SYSLOG_PROTOCOL=udp
+# Microsoft Sentinel HTTPS export (optional — auto-starts when workspace ID is set)
+# NETGUARD_SENTINEL_WORKSPACE_ID=
+# NETGUARD_SENTINEL_PRIMARY_KEY=
+# NETGUARD_SENTINEL_LOG_TYPE=NetGuard
 EOF
     chmod 644 "$ENV_FILE"
 }
@@ -306,6 +315,30 @@ configure_detector_restart() {
     fi
 }
 
+configure_sentinel_export() {
+    systemctl enable netguard-sentinel-export.service 2>/dev/null || true
+    if grep -qE '^\s*NETGUARD_SENTINEL_ENABLED=(0|false|no|off)\s*$' "$ENV_FILE" 2>/dev/null; then
+        log "Sentinel export disabled in $ENV_FILE"
+        systemctl stop netguard-sentinel-export.service 2>/dev/null || true
+        return
+    fi
+    if grep -qE '^\s*NETGUARD_SENTINEL_WORKSPACE_ID=.+$' "$ENV_FILE" 2>/dev/null; then
+        log "Microsoft Sentinel export: configured — starting service"
+        systemctl restart netguard-sentinel-export.service 2>/dev/null || true
+    else
+        log "Sentinel export not configured (set NETGUARD_SENTINEL_* in $ENV_FILE)"
+        log "  Or run: sudo $INSTALL_DIR/install/pi/setup-sentinel-export.sh <workspace_id> <primary_key>"
+    fi
+}
+
+configure_syslog_export() {
+    systemctl enable netguard-syslog-export.service 2>/dev/null || true
+    if grep -qE '^\s*NETGUARD_SYSLOG_ENABLED=(1|true|yes)\s*$' "$ENV_FILE" 2>/dev/null; then
+        systemctl restart netguard-syslog-export.service 2>/dev/null || true
+        log "Syslog export enabled"
+    fi
+}
+
 enable_services() {
     log "Enabling NetGuard services (start on boot) ..."
     systemctl enable netguard.target
@@ -338,6 +371,9 @@ enable_services() {
 
     systemctl restart netguard-api.service
     systemctl restart netguard.target
+
+    configure_syslog_export
+    configure_sentinel_export
 
     # Pi home: ARP network blocker enforces dashboard blocks on typical ISP routers.
     if [[ "$NETGUARD_PROFILE" == "home" ]]; then
@@ -392,6 +428,7 @@ print_summary() {
    netguard-risk-scorer.service
    netguard-dns-monitor.service
    netguard-arp-spoof.service
+   netguard-sentinel-export.service (if NETGUARD_SENTINEL_* configured)
 
  Documentation:
    install/pi/NetGuard-Pi-Install-Guide.pdf
@@ -400,6 +437,13 @@ print_summary() {
    sudo systemctl status netguard.target
    sudo systemctl restart netguard.target
    sudo journalctl -u netguard-api -f
+   sudo journalctl -u netguard-sentinel-export -f
+
+ Update in-place (from a new release tarball):
+   sudo ./install/pi/update-netguard.sh
+
+ Enable Sentinel (one-time, after setting Azure credentials):
+   sudo ./install/pi/setup-sentinel-export.sh <workspace_id> <primary_key>
 
  Optional (disabled by default — limited on mesh WiFi):
    sudo systemctl enable --now netguard-network-blocker.service

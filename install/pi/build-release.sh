@@ -48,6 +48,8 @@ rsync -a \
 cp "$ROOT/install/pi/install.sh" "$STAGING/install.sh"
 cp "$ROOT/install/pi/uninstall.sh" "$STAGING/uninstall.sh"
 chmod +x "$STAGING/install.sh" "$STAGING/uninstall.sh"
+chmod +x "$STAGING/install/pi/update-netguard.sh" 2>/dev/null || true
+chmod +x "$STAGING/install/pi/setup-sentinel-export.sh" 2>/dev/null || true
 
 # Include PDF install guide when present
 if [[ -f "$ROOT/install/pi/NetGuard-Pi-Install-Guide.pdf" ]]; then
@@ -64,4 +66,8 @@ log "Deploy on Pi:"
 log "  scp $OUTPUT netguard@<pi-ip>:~/"
 log "  ssh netguard@<pi-ip>"
 log "  tar xzf NetGuard-pi-${VERSION}.tar.gz"
-log "  cd NetGuard-pi && sudo ./install.sh"
+log "  cd NetGuard-pi && sudo ./install/pi/update-netguard.sh   # existing install"
+log "  cd NetGuard-pi && sudo ./install.sh                      # fresh install"
+log ""
+log "Enable Sentinel (one-time, on Pi):"
+log "  sudo ./install/pi/setup-sentinel-export.sh <workspace_id> <primary_key>"

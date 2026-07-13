@@ -181,6 +181,11 @@ class SentinelExporter:
 
     @property
     def is_configured(self) -> bool:
+        from netguard_env import env_bool
+
+        enabled_val = os.environ.get("NETGUARD_SENTINEL_ENABLED")
+        if enabled_val is not None and not env_bool(enabled_val):
+            return False
         return bool(self.workspace_id and self.primary_key)
 
     @property

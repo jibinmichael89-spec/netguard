@@ -23,7 +23,7 @@ stored by the ARP scanner in the shared SQLite database.
 #   /dns, /dns/*                          — DNS activity views
 #   /ports, /ports/*                      — open port views
 #   /monitoring/status                    — detector health panel
-#   /notifications/config, /settings/router, /settings/syslog, /policies, /threat-intel/status
+#   /notifications/config, /settings/router, /settings/syslog, /settings/sentinel, /policies, /threat-intel/status
 #   /alerts/suppressions, /domains/blocked, /devices/pending-approval
 #   /reports/summary, /devices/{ip}/timeline, /msp/* (GET only)
 #

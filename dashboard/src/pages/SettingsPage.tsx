@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Bell,
+  Cloud,
   Copy,
   FileDown,
   KeyRound,
@@ -25,12 +26,13 @@ import type {
   PoliciesResponse,
   RouterConfigUpdate,
   RouterSettingsResponse,
+  SentinelSettingsResponse,
   SyslogSettingsResponse,
   SystemInfoResponse,
   ThreatIntelStatusResponse,
 } from "../types";
 
-type Tab = "security" | "notifications" | "syslog" | "threat-intel" | "policies" | "router" | "reports";
+type Tab = "security" | "notifications" | "syslog" | "sentinel" | "threat-intel" | "policies" | "router" | "reports";
 
 const ROUTER_OPTIONS: {
   id: string;
@@ -129,6 +131,7 @@ const TABS: { id: Tab; label: string; icon: typeof Bell }[] = [
   { id: "security", label: "API key", icon: KeyRound },
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "syslog", label: "SIEM / Syslog", icon: Server },
+  { id: "sentinel", label: "Microsoft Sentinel", icon: Cloud },
   { id: "threat-intel", label: "Threat Intel", icon: Shield },
   { id: "policies", label: "Policies", icon: Shield },
   { id: "router", label: "Router", icon: Router },
@@ -157,6 +160,15 @@ export default function SettingsPage() {
     protocol: "udp" as "udp" | "tcp",
   });
   const [savingSyslog, setSavingSyslog] = useState(false);
+  const [sentinelSettings, setSentinelSettings] = useState<SentinelSettingsResponse | null>(null);
+  const [sentinelForm, setSentinelForm] = useState({
+    enabled: false,
+    workspace_id: "",
+    primary_key: "",
+    log_type: "NetGuard",
+  });
+  const [savingSentinel, setSavingSentinel] = useState(false);
+  const [testingSentinel, setTestingSentinel] = useState(false);
   const [threatIntel, setThreatIntel] = useState<ThreatIntelStatusResponse | null>(null);
   const [policies, setPolicies] = useState<PoliciesResponse["policies"]>([]);
   const [routerSettings, setRouterSettings] = useState<RouterSettingsResponse | null>(null);
@@ -179,9 +191,10 @@ export default function SettingsPage() {
     setError(undefined);
     const errors: string[] = [];
 
-    const [notif, syslog, intel, policyData, router, systemInfo] = await Promise.allSettled([
+    const [notif, syslog, sentinel, intel, policyData, router, systemInfo] = await Promise.allSettled([
       apiFetch<NotificationConfigResponse>("/notifications/config"),
       apiFetch<SyslogSettingsResponse>("/settings/syslog"),
+      apiFetch<SentinelSettingsResponse>("/settings/sentinel"),
       apiFetch<ThreatIntelStatusResponse>("/threat-intel/status"),
       apiFetch<PoliciesResponse>("/policies"),
       apiFetch<RouterSettingsResponse>("/settings/router"),
@@ -204,6 +217,18 @@ export default function SettingsPage() {
       });
     } else {
       errors.push("Syslog export");
+    }
+
+    if (sentinel.status === "fulfilled") {
+      setSentinelSettings(sentinel.value);
+      setSentinelForm({
+        enabled: sentinel.value.enabled,
+        workspace_id: sentinel.value.workspace_id || "",
+        primary_key: "",
+        log_type: sentinel.value.log_type || "NetGuard",
+      });
+    } else {
+      errors.push("Microsoft Sentinel");
     }
 
     if (intel.status === "fulfilled") {
@@ -392,6 +417,59 @@ export default function SettingsPage() {
       setError(err instanceof Error ? err.message : "Syslog save failed");
     } finally {
       setSavingSyslog(false);
+    }
+  };
+
+  const saveSentinelSettings = async () => {
+    setSavingSentinel(true);
+    setError(undefined);
+    setMessage(undefined);
+    try {
+      const payload: Record<string, unknown> = {
+        enabled: sentinelForm.enabled,
+        workspace_id: sentinelForm.workspace_id.trim() || undefined,
+        log_type: sentinelForm.log_type.trim() || "NetGuard",
+      };
+      if (sentinelForm.primary_key.trim()) {
+        payload.primary_key = sentinelForm.primary_key.trim();
+      }
+      const updated = await apiFetch<SentinelSettingsResponse>("/settings/sentinel", {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+      setSentinelSettings(updated);
+      setSentinelForm({
+        enabled: updated.enabled,
+        workspace_id: updated.workspace_id || "",
+        primary_key: "",
+        log_type: updated.log_type || "NetGuard",
+      });
+      setMessage(
+        updated.configured
+          ? "Microsoft Sentinel export enabled — new alerts export every 60 seconds"
+          : "Sentinel settings saved",
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sentinel save failed");
+    } finally {
+      setSavingSentinel(false);
+    }
+  };
+
+  const testSentinelExport = async () => {
+    setTestingSentinel(true);
+    setError(undefined);
+    setMessage(undefined);
+    try {
+      const result = await apiFetch<{ success: boolean; message: string }>(
+        "/settings/sentinel/test",
+        { method: "POST" },
+      );
+      setMessage(result.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sentinel test failed");
+    } finally {
+      setTestingSentinel(false);
     }
   };
 
@@ -894,6 +972,116 @@ export default function SettingsPage() {
             >
               <Save className="h-4 w-4" />
               Save
+            </button>
+          </div>
+        </div>
+      )}
+
+      {tab === "sentinel" && sentinelSettings && (
+        <div className="rounded-xl border border-ng-border bg-ng-card p-6 space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-semibold text-white">Microsoft Sentinel export</h3>
+              <p className="mt-1 text-sm text-gray-400">
+                Send NetGuard security alerts to your Azure Log Analytics workspace via the
+                Data Collector API. The sentinel-export service polls new alerts every 60
+                seconds.
+              </p>
+            </div>
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-medium ${
+                sentinelSettings.configured && sentinelSettings.service_active !== false
+                  ? "bg-emerald-500/10 text-emerald-400"
+                  : sentinelSettings.configured
+                    ? "bg-amber-500/10 text-amber-400"
+                    : "bg-gray-500/10 text-gray-400"
+              }`}
+            >
+              {sentinelSettings.configured && sentinelSettings.service_active
+                ? "Active"
+                : sentinelSettings.configured
+                  ? "Configured"
+                  : "Disabled"}
+            </span>
+          </div>
+
+          <label className="flex items-center gap-3 text-sm text-gray-300">
+            <input
+              type="checkbox"
+              checked={sentinelForm.enabled}
+              onChange={(e) =>
+                setSentinelForm((prev) => ({ ...prev, enabled: e.target.checked }))
+              }
+              className="h-4 w-4 rounded border-ng-border"
+            />
+            Enable Sentinel export
+          </label>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block text-sm sm:col-span-2">
+              <span className="text-gray-400">Workspace ID</span>
+              <input
+                className="mt-1 w-full rounded-lg border border-ng-border bg-ng-bg px-3 py-2 text-white font-mono text-sm"
+                value={sentinelForm.workspace_id}
+                onChange={(e) =>
+                  setSentinelForm((prev) => ({ ...prev, workspace_id: e.target.value }))
+                }
+                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+              />
+            </label>
+            <label className="block text-sm sm:col-span-2">
+              <span className="text-gray-400">Primary key</span>
+              <input
+                type="password"
+                className="mt-1 w-full rounded-lg border border-ng-border bg-ng-bg px-3 py-2 text-white font-mono text-sm"
+                value={sentinelForm.primary_key}
+                onChange={(e) =>
+                  setSentinelForm((prev) => ({ ...prev, primary_key: e.target.value }))
+                }
+                placeholder={
+                  sentinelSettings.primary_key
+                    ? "Saved — leave blank to keep current key"
+                    : "Base64 primary key from Azure Portal"
+                }
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="text-gray-400">Log type (custom table name)</span>
+              <input
+                className="mt-1 w-full rounded-lg border border-ng-border bg-ng-bg px-3 py-2 text-white"
+                value={sentinelForm.log_type}
+                onChange={(e) =>
+                  setSentinelForm((prev) => ({ ...prev, log_type: e.target.value }))
+                }
+                placeholder="NetGuard"
+              />
+            </label>
+          </div>
+
+          <p className="text-xs text-gray-500">
+            Credentials are saved to <code>{sentinelSettings.env_file}</code>. Find them in
+            Azure Portal → Log Analytics workspace → Agents → Workspace ID and Primary Key.
+            On Raspberry Pi the export service restarts automatically after you save.
+          </p>
+
+          <div className="flex flex-wrap gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => void saveSentinelSettings()}
+              disabled={savingSentinel}
+              className="flex items-center gap-2 rounded-lg bg-ng-accent px-4 py-2 text-sm font-medium text-white hover:bg-ng-accent/90 disabled:opacity-50"
+            >
+              <Save className="h-4 w-4" />
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={() => void testSentinelExport()}
+              disabled={testingSentinel || !sentinelSettings.configured}
+              className="flex items-center gap-2 rounded-lg border border-ng-border px-4 py-2 text-sm text-gray-300 hover:text-white disabled:opacity-50"
+            >
+              <Send className="h-4 w-4" />
+              Send test alert
             </button>
           </div>
         </div>
