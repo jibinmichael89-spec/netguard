@@ -1103,16 +1103,31 @@ def test_notifications() -> dict:
     notify_dir = os.path.join(_features_daemon, "notifications")
     if notify_dir not in sys.path:
         sys.path.insert(0, notify_dir)
-    from notifier import notify_alert
+    from notifier import test_email, test_telegram
 
-    notify_alert(
-        "Info",
-        "test",
-        "127.0.0.1",
-        "NetGuard test notification — your settings are working.",
-        _DB_PATH,
-    )
-    return {"success": True, "message": "Test notification sent (if configured)"}
+    telegram_result = test_telegram(_DB_PATH)
+    email_result = test_email(_DB_PATH)
+
+    if telegram_result.get("success") or email_result.get("success"):
+        parts: list[str] = []
+        if telegram_result.get("success"):
+            parts.append("Telegram")
+        if email_result.get("success"):
+            parts.append("email")
+        return {
+            "success": True,
+            "message": f"Test notification sent via {' and '.join(parts)}",
+            "telegram": telegram_result,
+            "email": email_result,
+        }
+
+    errors: list[str] = []
+    if telegram_result.get("error"):
+        errors.append(f"Telegram: {telegram_result['error']}")
+    if email_result.get("error"):
+        errors.append(f"Email: {email_result['error']}")
+    detail = "; ".join(errors) or "No notification channels are configured"
+    raise HTTPException(status_code=400, detail=detail)
 
 
 def _policy_enabled_from_db(conn: sqlite3.Connection, policy_id: str) -> bool | None:
