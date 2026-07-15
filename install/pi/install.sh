@@ -92,48 +92,8 @@ setup_python_venv() {
     chown -R "$NETGUARD_USER:$NETGUARD_GROUP" "$INSTALL_DIR/venv"
 }
 
-dashboard_assets_ok() {
-    local html="$INSTALL_DIR/api/static/index.html"
-    local asset
-
-    [[ -f "$html" ]] || return 1
-    grep -q 'assets/' "$html" 2>/dev/null || return 1
-
-    while IFS= read -r asset; do
-        [[ -n "$asset" ]] || continue
-        asset="${asset#/}"
-        if [[ ! -f "$INSTALL_DIR/api/static/$asset" ]]; then
-            warn "Missing dashboard asset: api/static/$asset"
-            return 1
-        fi
-    done < <(grep -oE '/assets/[^"'"'"' ]+' "$html" | sort -u)
-
-    return 0
-}
-
 build_dashboard() {
-    if dashboard_assets_ok; then
-        log "Dashboard static assets verified — skipping npm build"
-        return
-    fi
-
-    if ! command -v npm &>/dev/null; then
-        warn "npm not found — installing nodejs for dashboard build"
-        apt-get install -y --no-install-recommends nodejs npm || true
-    fi
-
-    if ! command -v npm &>/dev/null; then
-        warn "Dashboard not built — install nodejs/npm and re-run, or copy api/static/ manually"
-        return
-    fi
-
-    log "Building dashboard ..."
-    cd "$INSTALL_DIR/dashboard"
-    npm install --no-fund --no-audit
-    npm run build
-    mkdir -p "$INSTALL_DIR/api/static"
-    cp -r dist/* "$INSTALL_DIR/api/static/"
-    chown -R "$NETGUARD_USER:$NETGUARD_GROUP" "$INSTALL_DIR/api/static"
+    bash "$SCRIPT_DIR/build-dashboard.sh" "$INSTALL_DIR"
 }
 
 setup_data_directories() {

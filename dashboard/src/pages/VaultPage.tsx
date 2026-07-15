@@ -23,6 +23,8 @@ import type {
   VaultNoteDetail,
   VaultNotesListResponse,
   VaultPasswordCheckResponse,
+  VaultSetupResponse,
+  VaultStatusResponse,
   VaultUnlockResponse,
 } from "../types";
 import { VAULT_CATEGORIES } from "../types";
@@ -81,6 +83,15 @@ function breachBadge(status: VaultCredential["breach_status"], breachCount: numb
 
 export default function VaultPage() {
   const [masterPassword, setMasterPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [vaultInitialized, setVaultInitialized] = useState<boolean | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [showResetForm, setShowResetForm] = useState(false);
+  const [resetPhrase, setResetPhrase] = useState("");
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetConfirmPassword, setResetConfirmPassword] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+  const [setupLoading, setSetupLoading] = useState(false);
   const [sessionToken, setSessionToken] = useState("");
   const [unlocked, setUnlocked] = useState(false);
   const [lockMessage, setLockMessage] = useState<string>();
@@ -168,6 +179,104 @@ export default function VaultPage() {
     setNotes(data.notes);
   }, [sessionToken]);
 
+  const loadVaultStatus = useCallback(async () => {
+    setStatusLoading(true);
+    try {
+      const status = await apiFetch<VaultStatusResponse>("/vault/status");
+      setVaultInitialized(status.initialized);
+    } catch {
+      setVaultInitialized(null);
+    } finally {
+      setStatusLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadVaultStatus();
+  }, [loadVaultStatus]);
+
+  const completeUnlock = useCallback(
+    async (token: string) => {
+      setSessionToken(token);
+      setUnlocked(true);
+      setMasterPassword("");
+      setConfirmPassword("");
+      setShowResetForm(false);
+      setResetPhrase("");
+      setResetPassword("");
+      setResetConfirmPassword("");
+      touchActivity();
+      await loadCredentials(token);
+      await loadNotes(token);
+    },
+    [loadCredentials, loadNotes, touchActivity],
+  );
+
+  const handleCreateVault = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (masterPassword !== confirmPassword) {
+      setUnlockError("Passwords do not match");
+      return;
+    }
+    if (masterPassword.length < 8) {
+      setUnlockError("Master password must be at least 8 characters");
+      return;
+    }
+    setSetupLoading(true);
+    setUnlockError(undefined);
+    try {
+      const result = await apiFetch<VaultSetupResponse>("/vault/initialize", {
+        method: "POST",
+        body: JSON.stringify({
+          master_password: masterPassword,
+          confirm_password: confirmPassword,
+        }),
+      });
+      setVaultInitialized(true);
+      setPageMessage(result.message);
+      await completeUnlock(result.session_token);
+    } catch (error) {
+      setUnlockError(error instanceof Error ? error.message : "Failed to create vault");
+    } finally {
+      setSetupLoading(false);
+    }
+  };
+
+  const handleResetVault = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (resetPhrase.trim().toUpperCase() !== "RESET") {
+      setUnlockError('Type RESET in the confirmation field');
+      return;
+    }
+    if (resetPassword !== resetConfirmPassword) {
+      setUnlockError("New passwords do not match");
+      return;
+    }
+    if (resetPassword.length < 8) {
+      setUnlockError("Master password must be at least 8 characters");
+      return;
+    }
+    setResetLoading(true);
+    setUnlockError(undefined);
+    try {
+      const result = await apiFetch<VaultSetupResponse>("/vault/reset", {
+        method: "POST",
+        body: JSON.stringify({
+          confirm_phrase: resetPhrase,
+          new_master_password: resetPassword,
+          confirm_password: resetConfirmPassword,
+        }),
+      });
+      setVaultInitialized(true);
+      setPageMessage(result.message);
+      await completeUnlock(result.session_token);
+    } catch (error) {
+      setUnlockError(error instanceof Error ? error.message : "Failed to reset vault");
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
   const handleUnlock = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -179,15 +288,15 @@ export default function VaultPage() {
         body: JSON.stringify({ master_password: masterPassword }),
       });
       if (!result.unlocked || !result.session_token) {
-        setUnlockError("Incorrect master password");
+        if (result.reason === "not_initialized") {
+          setVaultInitialized(false);
+          setUnlockError("Vault is not set up yet — create a master password below");
+        } else {
+          setUnlockError("Incorrect master password");
+        }
         return;
       }
-      setSessionToken(result.session_token);
-      setUnlocked(true);
-      setMasterPassword("");
-      touchActivity();
-      await loadCredentials(result.session_token);
-      await loadNotes(result.session_token);
+      await completeUnlock(result.session_token);
     } catch (error) {
       setUnlockError(error instanceof Error ? error.message : "Failed to unlock vault");
     } finally {
@@ -534,6 +643,16 @@ export default function VaultPage() {
   };
 
   if (!unlocked) {
+    if (statusLoading) {
+      return (
+        <div className="flex min-h-[40vh] items-center justify-center text-gray-400">
+          Loading vault…
+        </div>
+      );
+    }
+
+    const isCreateMode = vaultInitialized === false;
+
     return (
       <div className="mx-auto max-w-md space-y-6 pt-12">
         <div className="text-center">
@@ -542,42 +661,183 @@ export default function VaultPage() {
           </div>
           <h2 className="text-2xl font-bold text-white">Password Vault</h2>
           <p className="mt-2 text-sm text-gray-400">
-            {lockMessage ?? "Enter your master password to access encrypted credentials"}
+            {lockMessage
+              ?? (isCreateMode
+                ? "Create a master password to encrypt your credentials on this device"
+                : showResetForm
+                  ? "Reset the vault and set a new master password"
+                  : "Enter your master password to access encrypted credentials")}
           </p>
         </div>
 
-        <form
-          onSubmit={handleUnlock}
-          className="space-y-4 rounded-xl border border-ng-border bg-ng-card p-6"
-        >
-          <div>
-            <label htmlFor="master-password" className="mb-1.5 block text-sm font-medium text-gray-400">
-              Master Password
-            </label>
-            <input
-              id="master-password"
-              type="password"
-              value={masterPassword}
-              onChange={(e) => setMasterPassword(e.target.value)}
-              className="w-full rounded-lg border border-ng-border bg-ng-elevated px-4 py-2.5 text-white outline-none focus:border-ng-accent/50"
-              required
-              autoComplete="current-password"
-            />
-          </div>
-          {unlockError && <p className="text-sm text-ng-alert">{unlockError}</p>}
-          <button
-            type="submit"
-            disabled={loading}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-ng-accent py-2.5 text-sm font-semibold text-ng-bg transition hover:brightness-110 disabled:opacity-50"
+        {showResetForm ? (
+          <form
+            onSubmit={handleResetVault}
+            className="space-y-4 rounded-xl border border-ng-alert/30 bg-ng-card p-6"
           >
-            {loading ? "Unlocking..." : (
-              <>
-                <Shield className="h-4 w-4" />
-                Unlock Vault
-              </>
-            )}
-          </button>
-        </form>
+            <p className="text-sm text-ng-alert">
+              This permanently deletes all stored credentials and notes. This cannot be undone.
+            </p>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-400">
+                Type RESET to confirm
+              </label>
+              <input
+                value={resetPhrase}
+                onChange={(e) => setResetPhrase(e.target.value)}
+                className="w-full rounded-lg border border-ng-border bg-ng-elevated px-4 py-2.5 text-white outline-none focus:border-ng-accent/50"
+                placeholder="RESET"
+                required
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-400">
+                New master password
+              </label>
+              <input
+                type="password"
+                value={resetPassword}
+                onChange={(e) => setResetPassword(e.target.value)}
+                className="w-full rounded-lg border border-ng-border bg-ng-elevated px-4 py-2.5 text-white outline-none focus:border-ng-accent/50"
+                required
+                minLength={8}
+                autoComplete="new-password"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-400">
+                Confirm new master password
+              </label>
+              <input
+                type="password"
+                value={resetConfirmPassword}
+                onChange={(e) => setResetConfirmPassword(e.target.value)}
+                className="w-full rounded-lg border border-ng-border bg-ng-elevated px-4 py-2.5 text-white outline-none focus:border-ng-accent/50"
+                required
+                minLength={8}
+                autoComplete="new-password"
+              />
+            </div>
+            {unlockError && <p className="text-sm text-ng-alert">{unlockError}</p>}
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="submit"
+                disabled={resetLoading}
+                className="rounded-lg bg-ng-alert px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {resetLoading ? "Resetting..." : "Reset vault"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowResetForm(false);
+                  setUnlockError(undefined);
+                  setResetPhrase("");
+                  setResetPassword("");
+                  setResetConfirmPassword("");
+                }}
+                className="rounded-lg border border-ng-border px-4 py-2.5 text-sm text-gray-300 hover:text-white"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        ) : isCreateMode ? (
+          <form
+            onSubmit={handleCreateVault}
+            className="space-y-4 rounded-xl border border-ng-border bg-ng-card p-6"
+          >
+            <div>
+              <label htmlFor="create-master-password" className="mb-1.5 block text-sm font-medium text-gray-400">
+                Master password
+              </label>
+              <input
+                id="create-master-password"
+                type="password"
+                value={masterPassword}
+                onChange={(e) => setMasterPassword(e.target.value)}
+                className="w-full rounded-lg border border-ng-border bg-ng-elevated px-4 py-2.5 text-white outline-none focus:border-ng-accent/50"
+                required
+                minLength={8}
+                autoComplete="new-password"
+              />
+            </div>
+            <div>
+              <label htmlFor="confirm-master-password" className="mb-1.5 block text-sm font-medium text-gray-400">
+                Confirm master password
+              </label>
+              <input
+                id="confirm-master-password"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full rounded-lg border border-ng-border bg-ng-elevated px-4 py-2.5 text-white outline-none focus:border-ng-accent/50"
+                required
+                minLength={8}
+                autoComplete="new-password"
+              />
+            </div>
+            <p className="text-xs text-gray-500">
+              Minimum 8 characters. Store this somewhere safe — it cannot be recovered.
+            </p>
+            {unlockError && <p className="text-sm text-ng-alert">{unlockError}</p>}
+            <button
+              type="submit"
+              disabled={setupLoading}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-ng-accent py-2.5 text-sm font-semibold text-ng-bg transition hover:brightness-110 disabled:opacity-50"
+            >
+              {setupLoading ? "Creating..." : (
+                <>
+                  <Shield className="h-4 w-4" />
+                  Create vault
+                </>
+              )}
+            </button>
+          </form>
+        ) : (
+          <form
+            onSubmit={handleUnlock}
+            className="space-y-4 rounded-xl border border-ng-border bg-ng-card p-6"
+          >
+            <div>
+              <label htmlFor="master-password" className="mb-1.5 block text-sm font-medium text-gray-400">
+                Master Password
+              </label>
+              <input
+                id="master-password"
+                type="password"
+                value={masterPassword}
+                onChange={(e) => setMasterPassword(e.target.value)}
+                className="w-full rounded-lg border border-ng-border bg-ng-elevated px-4 py-2.5 text-white outline-none focus:border-ng-accent/50"
+                required
+                autoComplete="current-password"
+              />
+            </div>
+            {unlockError && <p className="text-sm text-ng-alert">{unlockError}</p>}
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-ng-accent py-2.5 text-sm font-semibold text-ng-bg transition hover:brightness-110 disabled:opacity-50"
+            >
+              {loading ? "Unlocking..." : (
+                <>
+                  <Shield className="h-4 w-4" />
+                  Unlock Vault
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowResetForm(true);
+                setUnlockError(undefined);
+              }}
+              className="w-full text-center text-sm text-gray-500 hover:text-ng-alert"
+            >
+              Forgot master password? Reset vault
+            </button>
+          </form>
+        )}
       </div>
     );
   }
@@ -636,6 +896,16 @@ export default function VaultPage() {
           >
             <Lock className="h-4 w-4" />
             Lock
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              lockVault();
+              setShowResetForm(true);
+            }}
+            className="inline-flex items-center gap-2 rounded-lg border border-ng-alert/40 px-3 py-2 text-sm text-ng-alert hover:bg-ng-alert/10"
+          >
+            Reset vault
           </button>
         </div>
       </div>

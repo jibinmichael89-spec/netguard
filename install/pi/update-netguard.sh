@@ -162,6 +162,7 @@ main() {
 
     sync_application_files
     setup_python_venv
+    bash "$SCRIPT_DIR/build-dashboard.sh" "$INSTALL_DIR"
     install_systemd_units
     configure_syslog_export
     configure_sentinel_export

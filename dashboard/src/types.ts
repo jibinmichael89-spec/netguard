@@ -293,6 +293,21 @@ export interface VaultAddResponse {
 export interface VaultUnlockResponse {
   unlocked: boolean;
   session_token: string | null;
+  reason?: "not_initialized" | "incorrect_password" | null;
+  message?: string;
+}
+
+export interface VaultStatusResponse {
+  initialized: boolean;
+  credential_count: number;
+  note_count: number;
+}
+
+export interface VaultSetupResponse {
+  success: boolean;
+  initialized: boolean;
+  session_token: string;
+  message: string;
 }
 
 export interface VaultPasswordCheckResponse {

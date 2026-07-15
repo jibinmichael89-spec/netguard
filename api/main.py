@@ -74,11 +74,15 @@ from password_vault import (
     list_credentials,
     list_notes,
     recheck_all_breaches,
+    reinitialize_vault,
     resolve_vault_fernet,
+    setup_vault,
     strength_label,
     unlock_vault,
     update_credential,
     update_note,
+    vault_exists,
+    vault_status,
 )
 # ---------------------------------------------------------------------------
 # Configuration
@@ -1315,6 +1319,17 @@ class VaultNoteUpdateRequest(BaseModel):
     category: str | None = None
 
 
+class VaultInitializeRequest(BaseModel):
+    master_password: str
+    confirm_password: str
+
+
+class VaultResetRequest(BaseModel):
+    confirm_phrase: str
+    new_master_password: str
+    confirm_password: str
+
+
 def _require_vault_fernet(
     master_password: str | None,
     session_token: str | None,
@@ -1384,6 +1399,9 @@ def api_info() -> dict:
             "GET /risk/summary",
             "GET /reference/cve/{port}",
             "POST /vault/unlock",
+            "GET /vault/status",
+            "POST /vault/initialize",
+            "POST /vault/reset",
             "POST /vault/add",
             "POST /vault/list",
             "GET /vault/credential/{credential_id}",
@@ -2120,6 +2138,67 @@ def list_ports_for_device(device_ip: str) -> dict:
     return {"device_ip": device_ip, "count": len(rows), "ports": rows}
 
 
+@app.get("/vault/status")
+def vault_get_status() -> dict:
+    """Return whether the password vault has been initialized on this host."""
+    get_db_connection().close()
+    return vault_status(DB_PATH)
+
+
+@app.post("/vault/initialize")
+def vault_initialize(
+    request: VaultInitializeRequest,
+    api_key: str = Depends(verify_api_key),
+) -> dict:
+    """Create the vault master password (first-time setup only)."""
+    get_db_connection().close()
+    if request.master_password != request.confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match")
+    try:
+        setup_vault(request.master_password, DB_PATH)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    fernet = unlock_vault(request.master_password, DB_PATH)
+    if fernet is None:
+        raise HTTPException(status_code=500, detail="Vault setup failed")
+    session_token = create_vault_session(request.master_password)
+    return {
+        "success": True,
+        "initialized": True,
+        "session_token": session_token,
+        "message": "Vault created — save your master password somewhere safe",
+    }
+
+
+@app.post("/vault/reset")
+def vault_reset(
+    request: VaultResetRequest,
+    api_key: str = Depends(verify_api_key),
+) -> dict:
+    """Wipe all vault data and set a new master password."""
+    get_db_connection().close()
+    if request.confirm_phrase.strip().upper() != "RESET":
+        raise HTTPException(
+            status_code=400,
+            detail='Type RESET in the confirmation field to erase the vault',
+        )
+    if request.new_master_password != request.confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match")
+    try:
+        reinitialize_vault(request.new_master_password, DB_PATH)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    session_token = create_vault_session(request.new_master_password)
+    return {
+        "success": True,
+        "initialized": True,
+        "session_token": session_token,
+        "message": "Vault reset — all previous credentials and notes were deleted",
+    }
+
+
 @app.post("/vault/unlock")
 def vault_unlock(
     request: VaultUnlockRequest,
@@ -2130,11 +2209,21 @@ def vault_unlock(
     get_db_connection().close()
     if not request.master_password:
         raise HTTPException(status_code=400, detail="master_password is required")
+    if not vault_exists(DB_PATH):
+        return {
+            "unlocked": False,
+            "session_token": None,
+            "reason": "not_initialized",
+        }
     fernet = unlock_vault(request.master_password, DB_PATH)
     if fernet is None:
-        return {"unlocked": False, "session_token": None}
+        return {
+            "unlocked": False,
+            "session_token": None,
+            "reason": "incorrect_password",
+        }
     session_token = create_vault_session(request.master_password)
-    return {"unlocked": True, "session_token": session_token}
+    return {"unlocked": True, "session_token": session_token, "reason": None}
 
 
 @app.post("/vault/add")

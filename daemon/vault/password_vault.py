@@ -154,12 +154,77 @@ def init_database(db_path: str = DB_PATH) -> None:
 
 def vault_exists(db_path: str = DB_PATH) -> bool:
     """Return True if the vault has been initialized with a master password."""
+    init_database(db_path)
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM vault_config")
     count = cursor.fetchone()[0]
     conn.close()
     return count > 0
+
+
+def vault_status(db_path: str = DB_PATH) -> dict[str, Any]:
+    """Return whether the vault is initialized and how many items it contains."""
+    init_database(db_path)
+    initialized = vault_exists(db_path)
+    credential_count = 0
+    note_count = 0
+    if initialized:
+        conn = sqlite3.connect(db_path)
+        try:
+            credential_count = conn.execute(
+                "SELECT COUNT(*) FROM vault_credentials"
+            ).fetchone()[0]
+            note_count = conn.execute("SELECT COUNT(*) FROM vault_notes").fetchone()[0]
+        except sqlite3.Error:
+            pass
+        conn.close()
+    return {
+        "initialized": initialized,
+        "credential_count": credential_count,
+        "note_count": note_count,
+    }
+
+
+_VAULT_DATA_TABLES = (
+    "vault_credential_history",
+    "vault_credentials",
+    "vault_notes",
+    "vault_config",
+)
+
+
+def reset_vault(db_path: str = DB_PATH) -> None:
+    """Remove all vault data so a new master password can be configured."""
+    init_database(db_path)
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    for table in _VAULT_DATA_TABLES:
+        try:
+            cursor.execute(f"DELETE FROM {table}")
+        except sqlite3.Error:
+            pass
+    conn.commit()
+    conn.close()
+    _vault_sessions.clear()
+
+
+def setup_vault(master_password: str, db_path: str = DB_PATH) -> None:
+    """Create a new vault master password (first-time setup)."""
+    if len(master_password.strip()) < 8:
+        raise ValueError("Master password must be at least 8 characters")
+    init_database(db_path)
+    if vault_exists(db_path):
+        raise ValueError("Vault is already initialized — use reset instead")
+    initialize_vault(master_password, db_path)
+
+
+def reinitialize_vault(master_password: str, db_path: str = DB_PATH) -> None:
+    """Wipe vault data and set a new master password."""
+    if len(master_password.strip()) < 8:
+        raise ValueError("Master password must be at least 8 characters")
+    reset_vault(db_path)
+    initialize_vault(master_password, db_path)
 
 
 # ---------------------------------------------------------------------------
