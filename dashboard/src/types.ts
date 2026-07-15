@@ -268,6 +268,15 @@ export interface VaultCredential {
   is_compromised: number;
   last_checked: string | null;
   created_at: string;
+  category: string;
+  breach_status: "clean" | "breached" | "unchecked";
+  breach_count: number;
+  last_breach_check: string | null;
+}
+
+export interface VaultCredentialDetail extends VaultCredential {
+  password: string;
+  password_history_count: number;
 }
 
 export interface VaultListResponse {
@@ -278,7 +287,55 @@ export interface VaultListResponse {
 export interface VaultAddResponse {
   id: number;
   strength_score: number;
+  strength_label: string;
 }
+
+export interface VaultUnlockResponse {
+  unlocked: boolean;
+  session_token: string | null;
+}
+
+export interface VaultPasswordCheckResponse {
+  breached: boolean;
+  breach_count: number;
+  strength_score: number;
+  strength_label: string;
+  duplicate_of: string[];
+}
+
+export interface VaultGeneratePasswordResponse {
+  password: string;
+  strength_score: number;
+  strength_label: string;
+}
+
+export interface VaultNote {
+  id: number;
+  title: string;
+  category: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VaultNoteDetail extends VaultNote {
+  content: string;
+}
+
+export interface VaultNotesListResponse {
+  count: number;
+  notes: VaultNote[];
+}
+
+export const VAULT_CATEGORIES = [
+  "Router",
+  "Camera",
+  "IoT",
+  "NAS",
+  "Printer",
+  "Smart Home",
+  "Network",
+  "Other",
+] as const;
 
 export interface NotificationConfigResponse {
   config: Record<string, string>;

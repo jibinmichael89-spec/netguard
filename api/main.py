@@ -61,10 +61,24 @@ if os.path.isdir(_vault_dir) and _vault_dir not in sys.path:
 
 from password_vault import (
     add_credential,
+    add_note,
     calculate_strength,
+    check_password_pre_save,
+    create_vault_session,
     delete_credential,
-    get_all_credentials,
+    delete_note,
+    generate_password,
+    get_credential,
+    get_note,
+    init_database,
+    list_credentials,
+    list_notes,
+    recheck_all_breaches,
+    resolve_vault_fernet,
+    strength_label,
     unlock_vault,
+    update_credential,
+    update_note,
 )
 # ---------------------------------------------------------------------------
 # Configuration
@@ -1254,15 +1268,69 @@ def categorize_domain(domain: str) -> str:
 
 
 class VaultUnlockRequest(BaseModel):
-    master_password: str
+    master_password: str | None = None
+    session_token: str | None = None
 
 
 class VaultAddRequest(BaseModel):
-    master_password: str
+    master_password: str | None = None
+    session_token: str | None = None
     device_name: str
-    device_ip: str
+    device_ip: str = ""
     username: str
     password: str
+    category: str = "Other"
+
+
+class VaultUpdateRequest(BaseModel):
+    master_password: str | None = None
+    session_token: str | None = None
+    device_name: str | None = None
+    device_ip: str | None = None
+    username: str | None = None
+    password: str | None = None
+    category: str | None = None
+
+
+class VaultCheckPasswordRequest(BaseModel):
+    master_password: str | None = None
+    session_token: str | None = None
+    password: str
+    exclude_credential_id: int | None = None
+
+
+class VaultNoteAddRequest(BaseModel):
+    master_password: str | None = None
+    session_token: str | None = None
+    title: str
+    content: str
+    category: str = "Other"
+
+
+class VaultNoteUpdateRequest(BaseModel):
+    master_password: str | None = None
+    session_token: str | None = None
+    title: str | None = None
+    content: str | None = None
+    category: str | None = None
+
+
+def _require_vault_fernet(
+    master_password: str | None,
+    session_token: str | None,
+) -> Any:
+    init_database(DB_PATH)
+    fernet = resolve_vault_fernet(
+        master_password=master_password,
+        session_token=session_token,
+        db_path=DB_PATH,
+    )
+    if fernet is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Vault locked or session expired — unlock again with master password",
+        )
+    return fernet
 
 
 class DeviceTagRequest(BaseModel):
@@ -1318,6 +1386,16 @@ def api_info() -> dict:
             "POST /vault/unlock",
             "POST /vault/add",
             "POST /vault/list",
+            "GET /vault/credential/{credential_id}",
+            "PUT /vault/credential/{credential_id}",
+            "POST /vault/check-password",
+            "GET /vault/generate-password",
+            "POST /vault/recheck-breaches",
+            "POST /vault/notes/add",
+            "GET /vault/notes/list",
+            "GET /vault/notes/{note_id}",
+            "PUT /vault/notes/{note_id}",
+            "DELETE /vault/notes/{note_id}",
             "DELETE /vault/{credential_id}",
         ],
     }
@@ -2047,12 +2125,16 @@ def vault_unlock(
     request: VaultUnlockRequest,
     api_key: str = Depends(verify_api_key),
 ) -> dict:
-    """
-    Verify the vault master password without returning credential data.
-    """
+    """Verify the vault master password and return a short-lived session token."""
+    init_database(DB_PATH)
     get_db_connection().close()
-    fernet = unlock_vault(request.master_password)
-    return {"unlocked": fernet is not None}
+    if not request.master_password:
+        raise HTTPException(status_code=400, detail="master_password is required")
+    fernet = unlock_vault(request.master_password, DB_PATH)
+    if fernet is None:
+        return {"unlocked": False, "session_token": None}
+    session_token = create_vault_session(request.master_password)
+    return {"unlocked": True, "session_token": session_token}
 
 
 @app.post("/vault/add")
@@ -2060,24 +2142,22 @@ def vault_add(
     request: VaultAddRequest,
     api_key: str = Depends(verify_api_key),
 ) -> dict:
-    """
-    Unlock the vault and store a new encrypted credential.
-    """
+    """Unlock the vault and store a new encrypted credential."""
     get_db_connection().close()
-    fernet = unlock_vault(request.master_password)
-    if fernet is None:
-        raise HTTPException(status_code=401, detail="Incorrect master password")
-
+    fernet = _require_vault_fernet(request.master_password, request.session_token)
     row_id = add_credential(
         fernet,
         request.device_name,
         request.device_ip,
         request.username,
         request.password,
+        category=request.category,
+        db_path=DB_PATH,
     )
     return {
         "id": row_id,
         "strength_score": calculate_strength(request.password),
+        "strength_label": strength_label(calculate_strength(request.password)),
     }
 
 
@@ -2086,29 +2166,180 @@ def vault_list(
     request: VaultUnlockRequest,
     api_key: str = Depends(verify_api_key),
 ) -> dict:
-    """
-    Return vault credentials with metadata only — passwords are never exposed.
-    """
+    """Return vault credentials with metadata only — passwords are never exposed."""
     get_db_connection().close()
-    fernet = unlock_vault(request.master_password)
-    if fernet is None:
-        raise HTTPException(status_code=401, detail="Incorrect master password")
+    _require_vault_fernet(request.master_password, request.session_token)
+    credentials = list_credentials(DB_PATH)
+    return {"count": len(credentials), "credentials": credentials}
 
-    credentials = get_all_credentials(fernet)
-    masked = [
-        {
-            "id": cred["id"],
-            "device_name": cred["device_name"],
-            "device_ip": cred["device_ip"],
-            "username": cred["username"],
-            "strength_score": cred["strength_score"],
-            "is_compromised": cred["is_compromised"],
-            "last_checked": cred["last_checked"],
-            "created_at": cred["created_at"],
-        }
-        for cred in credentials
-    ]
-    return {"count": len(masked), "credentials": masked}
+
+@app.get("/vault/credential/{credential_id}")
+def vault_get_credential(
+    credential_id: int,
+    master_password: str | None = Query(default=None),
+    session_token: str | None = Query(default=None),
+    api_key: str = Depends(verify_api_key),
+) -> dict:
+    """Return one credential including decrypted password and history count."""
+    get_db_connection().close()
+    fernet = _require_vault_fernet(master_password, session_token)
+    credential = get_credential(fernet, credential_id, DB_PATH)
+    if credential is None:
+        raise HTTPException(status_code=404, detail="Credential not found")
+    return credential
+
+
+@app.put("/vault/credential/{credential_id}")
+def vault_update_credential(
+    credential_id: int,
+    request: VaultUpdateRequest,
+    api_key: str = Depends(verify_api_key),
+) -> dict:
+    """Update a stored credential. Password changes are saved to history."""
+    get_db_connection().close()
+    fernet = _require_vault_fernet(request.master_password, request.session_token)
+    updated = update_credential(
+        fernet,
+        credential_id,
+        device_name=request.device_name,
+        device_ip=request.device_ip,
+        username=request.username,
+        password=request.password,
+        category=request.category,
+        db_path=DB_PATH,
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Credential not found")
+    credential = get_credential(fernet, credential_id, DB_PATH)
+    return {"success": True, "credential": credential}
+
+
+@app.post("/vault/check-password")
+def vault_check_password(
+    request: VaultCheckPasswordRequest,
+    api_key: str = Depends(verify_api_key),
+) -> dict:
+    """Pre-save HIBP and duplicate checks without storing the password."""
+    get_db_connection().close()
+    fernet = _require_vault_fernet(request.master_password, request.session_token)
+    return check_password_pre_save(
+        request.password,
+        fernet,
+        DB_PATH,
+        exclude_credential_id=request.exclude_credential_id,
+    )
+
+
+@app.get("/vault/generate-password")
+def vault_generate_password(
+    length: int = Query(default=16, ge=8, le=64),
+    uppercase: bool = Query(default=True),
+    lowercase: bool = Query(default=True),
+    numbers: bool = Query(default=True),
+    symbols: bool = Query(default=True),
+    memorable: bool = Query(default=False),
+) -> dict:
+    """Generate a random or memorable password with a strength score."""
+    return generate_password(
+        length=length,
+        uppercase=uppercase,
+        lowercase=lowercase,
+        numbers=numbers,
+        symbols=symbols,
+        memorable=memorable,
+    )
+
+
+@app.post("/vault/recheck-breaches")
+def vault_recheck_breaches(
+    request: VaultUnlockRequest,
+    api_key: str = Depends(verify_api_key),
+) -> dict:
+    """Re-check all stored credentials against HIBP and return newly breached items."""
+    get_db_connection().close()
+    fernet = _require_vault_fernet(request.master_password, request.session_token)
+    newly_breached = recheck_all_breaches(DB_PATH, fernet)
+    return {
+        "success": True,
+        "newly_breached_count": len(newly_breached),
+        "newly_breached": newly_breached,
+    }
+
+
+@app.post("/vault/notes/add")
+def vault_add_note(
+    request: VaultNoteAddRequest,
+    api_key: str = Depends(verify_api_key),
+) -> dict:
+    get_db_connection().close()
+    fernet = _require_vault_fernet(request.master_password, request.session_token)
+    note_id = add_note(
+        fernet,
+        request.title,
+        request.content,
+        category=request.category,
+        db_path=DB_PATH,
+    )
+    return {"id": note_id, "success": True}
+
+
+@app.get("/vault/notes/list")
+def vault_list_notes(
+    master_password: str | None = Query(default=None),
+    session_token: str | None = Query(default=None),
+    api_key: str = Depends(verify_api_key),
+) -> dict:
+    get_db_connection().close()
+    _require_vault_fernet(master_password, session_token)
+    notes = list_notes(DB_PATH)
+    return {"count": len(notes), "notes": notes}
+
+
+@app.get("/vault/notes/{note_id}")
+def vault_get_note(
+    note_id: int,
+    master_password: str | None = Query(default=None),
+    session_token: str | None = Query(default=None),
+    api_key: str = Depends(verify_api_key),
+) -> dict:
+    get_db_connection().close()
+    fernet = _require_vault_fernet(master_password, session_token)
+    note = get_note(fernet, note_id, DB_PATH)
+    if note is None:
+        raise HTTPException(status_code=404, detail="Note not found")
+    return note
+
+
+@app.put("/vault/notes/{note_id}")
+def vault_update_note(
+    note_id: int,
+    request: VaultNoteUpdateRequest,
+    api_key: str = Depends(verify_api_key),
+) -> dict:
+    get_db_connection().close()
+    fernet = _require_vault_fernet(request.master_password, request.session_token)
+    updated = update_note(
+        fernet,
+        note_id,
+        title=request.title,
+        content=request.content,
+        category=request.category,
+        db_path=DB_PATH,
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Note not found")
+    note = get_note(fernet, note_id, DB_PATH)
+    return {"success": True, "note": note}
+
+
+@app.delete("/vault/notes/{note_id}")
+def vault_delete_note(
+    note_id: int,
+    api_key: str = Depends(verify_api_key),
+) -> dict:
+    get_db_connection().close()
+    delete_note(note_id, DB_PATH)
+    return {"deleted": True}
 
 
 @app.delete("/vault/{credential_id}")
@@ -2118,7 +2349,8 @@ def vault_delete(
 ) -> dict:
     """Delete a stored credential by id."""
     get_db_connection().close()
-    delete_credential(credential_id)
+    init_database(DB_PATH)
+    delete_credential(credential_id, DB_PATH)
     return {"deleted": True}
 
 
