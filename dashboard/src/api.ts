@@ -44,20 +44,7 @@ export function clearStoredApiKey(): void {
   }
 }
 
-function isMutatingMethod(method?: string): boolean {
-  const normalized = (method || "GET").toUpperCase();
-  return (
-    normalized === "POST" ||
-    normalized === "PUT" ||
-    normalized === "DELETE" ||
-    normalized === "PATCH"
-  );
-}
-
-function buildHeaders(
-  options: RequestInit,
-  requireAuth?: boolean,
-): HeadersInit {
+function buildHeaders(options: RequestInit): HeadersInit {
   const headers: Record<string, string> = { ...NGROK_HEADER };
 
   if (options.body) {
@@ -74,7 +61,7 @@ function buildHeaders(
 
   if (!headers["X-API-Key"]) {
     const stored = getStoredApiKey();
-    if (stored && (requireAuth || isMutatingMethod(options.method))) {
+    if (stored) {
       headers["X-API-Key"] = stored;
     }
   }
@@ -87,7 +74,7 @@ export async function apiFetch<T>(
   options: ApiFetchOptions = {},
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<T> {
-  const { requireAuth, ...fetchOptions } = options;
+  const { requireAuth: _requireAuth, ...fetchOptions } = options;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -99,7 +86,7 @@ export async function apiFetch<T>(
     const response = await fetch(`${API_BASE_URL}${path}`, {
       ...fetchOptions,
       signal: controller.signal,
-      headers: buildHeaders(fetchOptions, requireAuth),
+      headers: buildHeaders(fetchOptions),
     });
 
     if (!response.ok) {
