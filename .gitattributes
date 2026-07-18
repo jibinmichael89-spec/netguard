@@ -1,0 +1,4 @@
+# Force LF for shell scripts so Pi/Linux does not hit "command not found"
+# from Windows CRLF checkouts.
+*.sh text eol=lf
+*.bash text eol=lf

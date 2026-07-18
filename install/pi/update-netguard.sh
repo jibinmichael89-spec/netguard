@@ -52,6 +52,46 @@ sync_application_files() {
     chown -R "$NETGUARD_USER:$NETGUARD_GROUP" "$INSTALL_DIR"
 }
 
+ensure_restart_helper_scripts() {
+    local api_script="$INSTALL_DIR/scripts/restart-api.sh"
+    local detector_script="$INSTALL_DIR/scripts/restart-detector.sh"
+
+    mkdir -p "$INSTALL_DIR/scripts"
+
+    if [[ -f "$SOURCE_DIR/scripts/restart-api.sh" ]]; then
+        install -m 755 "$SOURCE_DIR/scripts/restart-api.sh" "$api_script"
+    fi
+    if [[ -f "$SOURCE_DIR/scripts/restart-detector.sh" ]]; then
+        install -m 755 "$SOURCE_DIR/scripts/restart-detector.sh" "$detector_script"
+    fi
+
+    # Strip Windows CRLF if present (causes "command not found" on Linux).
+    for script in "$api_script" "$detector_script"; do
+        if [[ -f "$script" ]]; then
+            sed -i 's/\r$//' "$script"
+            chmod 755 "$script"
+            chown root:root "$script"
+        fi
+    done
+
+    if [[ -f "$api_script" ]]; then
+        printf '%s\n' "$NETGUARD_USER ALL=(root) NOPASSWD: $api_script" \
+            > /etc/sudoers.d/netguard-api-restart
+        chmod 440 /etc/sudoers.d/netguard-api-restart
+    else
+        warn "Missing $api_script — Settings API restart will not work"
+    fi
+
+    if [[ -f "$detector_script" ]]; then
+        printf '%s\n' "$NETGUARD_USER ALL=(root) NOPASSWD: $detector_script" \
+            > /etc/sudoers.d/netguard-detector-restart
+        chmod 440 /etc/sudoers.d/netguard-detector-restart
+        log "Detector restart helper installed: $detector_script"
+    else
+        warn "Missing $detector_script — Monitoring restart buttons will not work"
+    fi
+}
+
 setup_python_venv() {
     log "Updating Python dependencies ..."
     if [[ ! -d "$INSTALL_DIR/venv" ]]; then
@@ -163,6 +203,7 @@ main() {
     sync_application_files
     setup_python_venv
     bash "$SCRIPT_DIR/build-dashboard.sh" "$INSTALL_DIR"
+    ensure_restart_helper_scripts
     install_systemd_units
     configure_syslog_export
     configure_sentinel_export

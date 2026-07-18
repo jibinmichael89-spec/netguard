@@ -248,6 +248,7 @@ configure_api_restart() {
         return
     fi
     log "Configuring passwordless API restart for dashboard Settings ..."
+    sed -i 's/\r$//' "$restart_script"
     chmod 755 "$restart_script"
     chown root:root "$restart_script"
     local sudoers_file="/etc/sudoers.d/netguard-api-restart"
@@ -265,6 +266,7 @@ configure_detector_restart() {
         return
     fi
     log "Configuring passwordless detector restart for dashboard Monitoring ..."
+    sed -i 's/\r$//' "$restart_script"
     chmod 755 "$restart_script"
     chown root:root "$restart_script"
     local sudoers_file="/etc/sudoers.d/netguard-detector-restart"
