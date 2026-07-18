@@ -19,10 +19,10 @@ if os.path.isdir(_daemon_dir) and _daemon_dir not in sys.path:
 
 from database import init_netguard_database
 
-# Slightly longer than before so slow IoT/printer stacks are less likely to
-# be missed; keep scans bounded for the 30s ARP cycle.
-SCAN_TIMEOUT = float(os.environ.get("NETGUARD_PORT_SCAN_TIMEOUT", "0.8"))
-MAX_WORKERS = int(os.environ.get("NETGUARD_PORT_SCAN_WORKERS", "64"))
+# Keep scans light enough for Raspberry Pi while still covering common ports.
+# Override via env if needed: NETGUARD_PORT_SCAN_TIMEOUT, NETGUARD_PORT_SCAN_WORKERS
+SCAN_TIMEOUT = float(os.environ.get("NETGUARD_PORT_SCAN_TIMEOUT", "0.5"))
+MAX_WORKERS = int(os.environ.get("NETGUARD_PORT_SCAN_WORKERS", "16"))
 
 # Curated LAN/home/SOHO TCP ports — not a full 1–65535 sweep (too slow/noisy).
 PORTS_TO_SCAN: dict[int, str] = {

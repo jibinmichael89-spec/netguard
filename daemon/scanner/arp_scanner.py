@@ -25,6 +25,10 @@ from scapy.all import ARP, Ether, srp
 # Scan interval in seconds between network sweeps
 SCAN_INTERVAL_SECONDS = 30
 
+# Full TCP port scans are expensive on Pi — do not run on every ARP cycle.
+PORT_SCAN_INTERVAL_SECONDS = int(os.environ.get("NETGUARD_PORT_SCAN_INTERVAL", "300"))
+_last_port_scan_monotonic = 0.0
+
 
 def _subprocess_creationflags() -> int:
     if sys.platform == "win32":
@@ -455,7 +459,7 @@ def _subnet_ping_sweep(local_ip: str) -> None:
         for last_octet in range(1, 255)
         if f"{prefix}{last_octet}" != local_ip
     ]
-    with ThreadPoolExecutor(max_workers=48) as executor:
+    with ThreadPoolExecutor(max_workers=24) as executor:
         for _ in executor.map(_ping_host, targets):
             pass
 
@@ -830,11 +834,19 @@ def run_scan_cycle(db_path: str, subnet: str) -> None:
 
     print_scan_results(online_devices, new_macs, offline_devices)
 
+    global _last_port_scan_monotonic
     if online_devices:
-        try:
-            run_port_scan_cycle(db_path)
-        except Exception as exc:
-            print(f"[!] Port scan failed: {exc}")
+        now = time.monotonic()
+        due = (now - _last_port_scan_monotonic) >= PORT_SCAN_INTERVAL_SECONDS
+        if due:
+            try:
+                run_port_scan_cycle(db_path)
+                _last_port_scan_monotonic = now
+            except Exception as exc:
+                print(f"[!] Port scan failed: {exc}")
+        else:
+            wait_s = int(PORT_SCAN_INTERVAL_SECONDS - (now - _last_port_scan_monotonic))
+            print(f"[*] Port scan deferred (next in ~{max(0, wait_s)}s)")
 
     if sys.platform == "win32":
         try:
@@ -887,6 +899,7 @@ def main() -> None:
 
     print(f"Detected subnet: {subnet}")
     print(f"Scan interval:   {SCAN_INTERVAL_SECONDS}s")
+    print(f"Port scan every: {PORT_SCAN_INTERVAL_SECONDS}s")
     if sys.platform == "win32":
         print("Running in background - leave minimized. No manual steps needed.")
     print("Press Ctrl+C to stop.\n")
