@@ -176,8 +176,8 @@ export default function DnsPage() {
         <div>
           <h2 className="text-2xl font-bold text-white">DNS Activity</h2>
           <p className="mt-1 text-sm text-gray-400">
-            {withDnsCount} monitored · {withoutDnsCount} online with no DNS yet — click a device
-            for full history
+            {withDnsCount} monitored · {withoutDnsCount} online with no DNS yet — open DNS history
+            for lookup details only
           </p>
           {systemType === "pi" && withoutDnsCount > 0 && (
             <p className="mt-2 text-xs text-amber-300/90">
@@ -323,13 +323,13 @@ export default function DnsPage() {
                             )}
                           </td>
                           <td className="px-4 py-3 text-right">
-                            <Link
-                              to={`/device/${entry.source_ip}`}
-                              className="inline-flex items-center gap-1 text-sm font-medium text-ng-accent hover:underline"
-                            >
-                              Full history
-                              <ChevronRight className="h-4 w-4" />
-                            </Link>
+                        <Link
+                          to={`/dns/device/${encodeURIComponent(entry.source_ip)}`}
+                          className="inline-flex items-center gap-1 text-sm font-medium text-ng-accent hover:underline"
+                        >
+                          DNS history
+                          <ChevronRight className="h-4 w-4" />
+                        </Link>
                           </td>
                         </tr>
                       );

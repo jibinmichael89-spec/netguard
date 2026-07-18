@@ -3,6 +3,7 @@ import Layout from "./Layout";
 import DashboardPage from "./pages/DashboardPage";
 import AlertsPage from "./pages/AlertsPage";
 import DnsPage from "./pages/DnsPage";
+import DnsDeviceDetailPage from "./pages/DnsDeviceDetailPage";
 import DeviceDetailPage from "./pages/DeviceDetailPage";
 import VaultPage from "./pages/VaultPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -16,6 +17,7 @@ export default function App() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/dns" element={<DnsPage />} />
+          <Route path="/dns/device/:ip" element={<DnsDeviceDetailPage />} />
           <Route path="/device/:ip" element={<DeviceDetailPage />} />
           <Route path="/vault" element={<VaultPage />} />
           <Route path="/settings" element={<SettingsPage />} />

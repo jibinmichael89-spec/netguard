@@ -1435,6 +1435,7 @@ def api_info() -> dict:
             "GET /dhcp/servers",
             "GET /dns",
             "GET /dns/devices",
+            "GET /dns/device/{source_ip}",
             "GET /dns/suspicious",
             "GET /dns/summary",
             "GET /ports",
@@ -2049,6 +2050,40 @@ def list_dns_queries() -> dict:
     queries = _fetch_dns_queries(conn, limit=100)
     conn.close()
     return {"count": len(queries), "queries": queries}
+
+
+@app.get("/dns/device/{source_ip}")
+def list_dns_queries_for_device(
+    source_ip: str,
+    limit: int = Query(default=500, ge=1, le=2000),
+    suspicious_only: bool = Query(default=False),
+) -> dict:
+    """
+    Return DNS query history for one device IP (DNS page detail view).
+
+    Unlike the dashboard device page, this endpoint returns only DNS rows —
+    no ports, alerts, or mixed timeline events.
+    """
+    conn = get_db_connection()
+    where = "q.source_ip = ?"
+    if suspicious_only:
+        where += " AND q.is_suspicious = 1"
+    queries = _fetch_dns_queries(
+        conn,
+        where_sql=where,
+        params=(source_ip,),
+        limit=limit,
+    )
+    device = _dns_device_info(conn, source_ip)
+    suspicious_count = sum(1 for q in queries if q.get("is_suspicious") == 1)
+    conn.close()
+    return {
+        "source_ip": source_ip,
+        "count": len(queries),
+        "suspicious_count": suspicious_count,
+        "device": device,
+        "queries": queries,
+    }
 
 
 @app.get("/dns/suspicious")
