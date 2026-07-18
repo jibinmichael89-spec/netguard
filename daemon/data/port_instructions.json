@@ -191,6 +191,98 @@
       ]
     }
   },
+  "110": {
+    "service": "POP3",
+    "dangerous_reason": "Unencrypted email retrieval. Credentials and message contents can be intercepted on the LAN. Prefer POP3S (995) or IMAPS (993).",
+    "windows": {
+      "description": "Disable POP3 on Windows mail server",
+      "steps": [
+        "Press Win+R, type 'services.msc', press Enter",
+        "Stop any POP3 / mail retrieval service you do not need",
+        "If using hMailServer or similar, disable POP3 in the admin console",
+        "Verify: netstat -ano | findstr :110"
+      ]
+    },
+    "linux": {
+      "description": "Stop POP3 on Linux",
+      "steps": [
+        "Open terminal",
+        "Run: sudo ss -tlnp | grep :110",
+        "Stop Dovecot/Courier POP3: sudo systemctl stop dovecot",
+        "Disable: sudo systemctl disable dovecot",
+        "Or bind mail services to 127.0.0.1 only"
+      ]
+    },
+    "pi": {
+      "description": "Stop POP3 on Raspberry Pi",
+      "steps": [
+        "Run: sudo ss -tlnp | grep :110",
+        "Stop mail daemons if installed: sudo systemctl stop dovecot",
+        "Prefer encrypted mail (993/995) if you must run a mail server"
+      ]
+    }
+  },
+  "111": {
+    "service": "RPCbind",
+    "dangerous_reason": "RPC portmapper exposes NFS/RPC services for enumeration. Attackers use it to map NFS, mountd, and other RPC endpoints for lateral movement.",
+    "windows": {
+      "description": "Disable RPC on Windows",
+      "steps": [
+        "Press Win+R, type 'services.msc', press Enter",
+        "Find 'RPC Endpoint Mapper' only if you intentionally run NFS/RPC servers",
+        "Prefer blocking inbound 111 in Windows Firewall for untrusted LAN segments",
+        "Verify: netstat -ano | findstr :111"
+      ]
+    },
+    "linux": {
+      "description": "Stop rpcbind on Linux",
+      "steps": [
+        "Open terminal",
+        "Run: sudo systemctl stop rpcbind",
+        "Run: sudo systemctl disable rpcbind",
+        "Also stop nfs-server if unused: sudo systemctl stop nfs-server",
+        "Verify: sudo ss -tlnp | grep :111"
+      ]
+    },
+    "pi": {
+      "description": "Stop rpcbind on Raspberry Pi",
+      "steps": [
+        "Run: sudo systemctl stop rpcbind",
+        "Run: sudo systemctl disable rpcbind",
+        "Only keep NFS/rpcbind if you intentionally share files"
+      ]
+    }
+  },
+  "135": {
+    "service": "MSRPC",
+    "dangerous_reason": "Windows RPC endpoint mapper. Used in lateral movement and remote service abuse. Should not be reachable from untrusted devices.",
+    "windows": {
+      "description": "Restrict MSRPC on Windows",
+      "steps": [
+        "Press Win+R, type 'wf.msc', press Enter",
+        "Create inbound rule: Block TCP 135 from non-trusted IPs",
+        "Disable unused remote admin features (Remote Registry, etc.)",
+        "Keep Windows Update enabled",
+        "Verify: netstat -ano | findstr :135"
+      ]
+    },
+    "linux": {
+      "description": "Block MSRPC from Linux hosts",
+      "steps": [
+        "This port is typically on Windows endpoints",
+        "From the Linux gateway/firewall: block TCP 135 to Windows hosts from guest VLANs",
+        "Example: sudo iptables -A FORWARD -p tcp --dport 135 -j DROP"
+      ]
+    },
+    "pi": {
+      "description": "Block MSRPC on the Pi firewall path",
+      "steps": [
+        "Pi rarely listens on 135",
+        "If scanning a Windows PC, harden that PC instead",
+        "Use your router/Pi firewall to isolate IoT from Windows admin ports"
+      ]
+    }
+  },
   "139": {
     "service": "NetBIOS",
     "dangerous_reason": "Legacy Windows file sharing. Highly exploitable — used by worms like Conficker and EternalBlue-era lateral movement on flat networks.",
@@ -219,6 +311,64 @@
         "Run: sudo systemctl stop nmbd smbd",
         "Run: sudo systemctl disable nmbd smbd",
         "Disable Samba unless you intentionally share files on the LAN"
+      ]
+    }
+  },
+  "143": {
+    "service": "IMAP",
+    "dangerous_reason": "Unencrypted IMAP. Credentials and email can be sniffed. Prefer IMAPS on port 993.",
+    "windows": {
+      "description": "Disable plain IMAP on Windows",
+      "steps": [
+        "In your mail server admin UI, disable IMAP or require TLS",
+        "Stop mail services you do not need via services.msc",
+        "Verify: netstat -ano | findstr :143"
+      ]
+    },
+    "linux": {
+      "description": "Stop IMAP on Linux",
+      "steps": [
+        "Run: sudo ss -tlnp | grep :143",
+        "Configure Dovecot for SSL-only or stop: sudo systemctl stop dovecot",
+        "Prefer port 993 with valid certificates"
+      ]
+    },
+    "pi": {
+      "description": "Stop IMAP on Raspberry Pi",
+      "steps": [
+        "Run: sudo ss -tlnp | grep :143",
+        "Stop Dovecot if installed",
+        "Use a hosted mail provider instead of self-hosting when possible"
+      ]
+    }
+  },
+  "389": {
+    "service": "LDAP",
+    "dangerous_reason": "Directory services often carry credentials and user data. Unencrypted LDAP can leak authentication traffic; restrict to trusted management hosts.",
+    "windows": {
+      "description": "Restrict LDAP on Windows (AD)",
+      "steps": [
+        "Prefer LDAPS (636) for directory binds",
+        "Block inbound 389 from non-domain / guest networks in Windows Firewall",
+        "Do not expose Active Directory to the internet",
+        "Verify: netstat -ano | findstr :389"
+      ]
+    },
+    "linux": {
+      "description": "Stop or bind LDAP on Linux",
+      "steps": [
+        "Run: sudo ss -tlnp | grep :389",
+        "Stop OpenLDAP if unused: sudo systemctl stop slapd && sudo systemctl disable slapd",
+        "If required, bind to localhost or VPN-only interfaces",
+        "Prefer LDAPS (636)"
+      ]
+    },
+    "pi": {
+      "description": "Stop LDAP on Raspberry Pi",
+      "steps": [
+        "Run: sudo systemctl stop slapd",
+        "Run: sudo systemctl disable slapd",
+        "Only run directory services on dedicated, segmented hosts"
       ]
     }
   },
@@ -283,6 +433,63 @@
       ]
     }
   },
+  "465": {
+    "service": "SMTPS",
+    "dangerous_reason": "SMTP over TLS submission. Legitimate for mail servers, but unexpected listeners may indicate malware relays or misconfigured mail stacks.",
+    "windows": {
+      "description": "Review SMTPS on Windows",
+      "steps": [
+        "Confirm whether a mail server should be running",
+        "In mail server settings, restrict relay and require authentication",
+        "Block inbound 465 from the internet at the router",
+        "Verify: netstat -ano | findstr :465"
+      ]
+    },
+    "linux": {
+      "description": "Harden or stop SMTPS on Linux",
+      "steps": [
+        "Run: sudo ss -tlnp | grep :465",
+        "If unused: sudo systemctl stop postfix && sudo systemctl disable postfix",
+        "If needed: require auth, disable open relay, keep TLS current"
+      ]
+    },
+    "pi": {
+      "description": "Stop unexpected SMTPS on Raspberry Pi",
+      "steps": [
+        "Run: sudo ss -tlnp | grep :465",
+        "Stop Postfix/Exim if you are not running mail",
+        "Never allow an open relay on a home Pi"
+      ]
+    }
+  },
+  "548": {
+    "service": "AFP",
+    "dangerous_reason": "Apple Filing Protocol file sharing. Legacy AFP can expose shared folders; prefer SMB with strong auth or turn sharing off when unused.",
+    "windows": {
+      "description": "Disable AFP on Windows",
+      "steps": [
+        "AFP is uncommon on Windows — check third-party file servers",
+        "Stop any AppleTalk/AFP service or Docker container publishing 548",
+        "Verify: netstat -ano | findstr :548"
+      ]
+    },
+    "linux": {
+      "description": "Stop AFP/Netatalk on Linux",
+      "steps": [
+        "Run: sudo systemctl stop netatalk",
+        "Run: sudo systemctl disable netatalk",
+        "Prefer Samba (SMB) with authentication if file sharing is required",
+        "Verify: sudo ss -tlnp | grep :548"
+      ]
+    },
+    "pi": {
+      "description": "Disable AFP on Raspberry Pi / macOS shares",
+      "steps": [
+        "On Pi with Netatalk: sudo systemctl stop netatalk && sudo systemctl disable netatalk",
+        "On Mac: System Settings → General → Sharing → turn off File Sharing if unused"
+      ]
+    }
+  },
   "554": {
     "service": "RTSP (Real Time Streaming)",
     "dangerous_reason": "IP camera and video streaming. If unintended, stop the service — exposed streams leak live video. Default camera credentials are brute-forced constantly.",
@@ -310,6 +517,93 @@
         "Stop camera streaming service: sudo systemctl stop <rtsp-service>",
         "Run: sudo systemctl disable <rtsp-service>",
         "Use local viewing only — do not expose Pi cameras to the internet"
+      ]
+    }
+  },
+  "587": {
+    "service": "Submission",
+    "dangerous_reason": "Mail submission port. Expected on mail servers; unexpected listeners may be spam relays. Require authentication and TLS.",
+    "windows": {
+      "description": "Harden submission on Windows",
+      "steps": [
+        "Confirm mail server ownership",
+        "Require SMTP AUTH and TLS",
+        "Block internet inbound 587 unless you intentionally host mail",
+        "Verify: netstat -ano | findstr :587"
+      ]
+    },
+    "linux": {
+      "description": "Harden or stop submission on Linux",
+      "steps": [
+        "Run: sudo ss -tlnp | grep :587",
+        "Stop Postfix if unused",
+        "If used: enable SASL auth, restrict networks, no open relay"
+      ]
+    },
+    "pi": {
+      "description": "Stop unexpected submission on Raspberry Pi",
+      "steps": [
+        "Run: sudo ss -tlnp | grep :587",
+        "Stop mail services unless you operate a mail server",
+        "Use your ISP/provider SMTP instead for home use"
+      ]
+    }
+  },
+  "631": {
+    "service": "IPP",
+    "dangerous_reason": "Internet Printing Protocol. Exposed printers can leak documents, allow job injection, or be used for lateral movement.",
+    "windows": {
+      "description": "Restrict IPP on Windows",
+      "steps": [
+        "Settings → Bluetooth & devices → Printers & scanners",
+        "Remove unused network printers",
+        "Disable 'File and Printer Sharing' for guest networks",
+        "Block TCP 631 from untrusted VLANs"
+      ]
+    },
+    "linux": {
+      "description": "Stop CUPS on Linux if unused",
+      "steps": [
+        "Run: sudo systemctl stop cups",
+        "Run: sudo systemctl disable cups",
+        "Or edit /etc/cups/cupsd.conf to Listen localhost:631 only",
+        "Verify: sudo ss -tlnp | grep :631"
+      ]
+    },
+    "pi": {
+      "description": "Harden printing on Raspberry Pi",
+      "steps": [
+        "Run: sudo systemctl stop cups && sudo systemctl disable cups if unused",
+        "If printing is needed, bind CUPS to LAN only and require auth",
+        "Isolate printers on an IoT VLAN when possible"
+      ]
+    }
+  },
+  "636": {
+    "service": "LDAPS",
+    "dangerous_reason": "LDAP over TLS. Safer than plain LDAP but still a high-value directory endpoint — restrict to domain controllers / admin networks.",
+    "windows": {
+      "description": "Restrict LDAPS on Windows",
+      "steps": [
+        "Allow 636 only from domain-joined / admin subnets",
+        "Block from guest/IoT VLANs in Windows Firewall",
+        "Keep domain controllers patched",
+        "Verify: netstat -ano | findstr :636"
+      ]
+    },
+    "linux": {
+      "description": "Stop or restrict LDAPS on Linux",
+      "steps": [
+        "Run: sudo ss -tlnp | grep :636",
+        "Stop slapd if unused",
+        "If required, firewall to management hosts only"
+      ]
+    },
+    "pi": {
+      "description": "Avoid LDAPS on home Raspberry Pi",
+      "steps": [
+        "Stop slapd if present",
+        "Do not run directory services on a home Pi exposed to all LAN clients"
       ]
     }
   },
@@ -341,6 +635,61 @@
         "Run: sudo systemctl stop rsync",
         "Run: sudo systemctl disable rsync",
         "If using rsync for backups, bind to localhost or require SSH tunnel only"
+      ]
+    }
+  },
+  "993": {
+    "service": "IMAPS",
+    "dangerous_reason": "Encrypted IMAP. Usually legitimate for mail, but unexpected open IMAPS may mean an unintended mail stack is reachable.",
+    "windows": {
+      "description": "Review IMAPS on Windows",
+      "steps": [
+        "Confirm the mail server should be listening",
+        "Require strong passwords / modern auth",
+        "Do not expose 993 to the internet unless required",
+        "Verify: netstat -ano | findstr :993"
+      ]
+    },
+    "linux": {
+      "description": "Harden IMAPS on Linux",
+      "steps": [
+        "Run: sudo ss -tlnp | grep :993",
+        "Stop Dovecot if unused",
+        "Keep TLS certificates valid; disable weak ciphers"
+      ]
+    },
+    "pi": {
+      "description": "Stop unexpected IMAPS on Raspberry Pi",
+      "steps": [
+        "Run: sudo ss -tlnp | grep :993",
+        "Stop mail daemons if you are not hosting email"
+      ]
+    }
+  },
+  "995": {
+    "service": "POP3S",
+    "dangerous_reason": "Encrypted POP3. Prefer disabling unused mail protocols; unexpected listeners should be investigated.",
+    "windows": {
+      "description": "Review POP3S on Windows",
+      "steps": [
+        "Disable POP3S in mail server if clients use IMAP only",
+        "Block internet exposure of 995",
+        "Verify: netstat -ano | findstr :995"
+      ]
+    },
+    "linux": {
+      "description": "Stop POP3S on Linux",
+      "steps": [
+        "Run: sudo ss -tlnp | grep :995",
+        "Disable POP3 in Dovecot protocols= line or stop dovecot",
+        "Prefer IMAPS-only setups"
+      ]
+    },
+    "pi": {
+      "description": "Stop POP3S on Raspberry Pi",
+      "steps": [
+        "Run: sudo ss -tlnp | grep :995",
+        "Stop mail services if unused"
       ]
     }
   },
@@ -404,6 +753,91 @@
         "If a listener is open: sudo ss -tlnp | grep :1521",
         "Stop and disable the unexpected service immediately",
         "Use SQLite or PostgreSQL bound to localhost for Pi projects"
+      ]
+    }
+  },
+  "1720": {
+    "service": "H.323",
+    "dangerous_reason": "Legacy video conferencing signaling. Rarely needed at home; exposed H.323 stacks have a history of remote flaws.",
+    "windows": {
+      "description": "Disable H.323 on Windows",
+      "steps": [
+        "Uninstall unused conferencing / PBX software",
+        "Block TCP 1720 in Windows Firewall",
+        "Verify: netstat -ano | findstr :1720"
+      ]
+    },
+    "linux": {
+      "description": "Stop H.323 services on Linux",
+      "steps": [
+        "Run: sudo ss -tlnp | grep :1720",
+        "Stop Asterisk/FreeSWITCH modules using H.323 if unused",
+        "Prefer SIP over TLS on modern stacks"
+      ]
+    },
+    "pi": {
+      "description": "Stop H.323 on Raspberry Pi",
+      "steps": [
+        "Run: sudo ss -tlnp | grep :1720",
+        "Stop PBX containers/services if not intentionally running VoIP"
+      ]
+    }
+  },
+  "1723": {
+    "service": "PPTP",
+    "dangerous_reason": "Obsolete VPN protocol with known cryptographic weaknesses. Prefer WireGuard or OpenVPN/IKEv2 instead.",
+    "windows": {
+      "description": "Disable PPTP on Windows",
+      "steps": [
+        "Remove PPTP VPN connections you do not use",
+        "Do not enable Routing and Remote Access PPTP",
+        "Block TCP 1723 inbound",
+        "Verify: netstat -ano | findstr :1723"
+      ]
+    },
+    "linux": {
+      "description": "Stop PPTP on Linux",
+      "steps": [
+        "Run: sudo systemctl stop pptpd",
+        "Run: sudo systemctl disable pptpd",
+        "Migrate to WireGuard (UDP 51820) or OpenVPN"
+      ]
+    },
+    "pi": {
+      "description": "Stop PPTP on Raspberry Pi",
+      "steps": [
+        "Run: sudo systemctl stop pptpd && sudo systemctl disable pptpd",
+        "Use WireGuard for home VPN access"
+      ]
+    }
+  },
+  "1883": {
+    "service": "MQTT",
+    "dangerous_reason": "IoT messaging broker. Often left without authentication — attackers can subscribe/publish to home automation topics.",
+    "windows": {
+      "description": "Secure MQTT on Windows",
+      "steps": [
+        "If running Mosquitto/EMQX in Docker/WSL, require username/password",
+        "Disable anonymous access",
+        "Prefer MQTTS (8883)",
+        "Verify: netstat -ano | findstr :1883"
+      ]
+    },
+    "linux": {
+      "description": "Harden MQTT on Linux",
+      "steps": [
+        "Edit /etc/mosquitto/mosquitto.conf: allow_anonymous false and set password_file",
+        "Run: sudo systemctl restart mosquitto",
+        "Or stop if unused: sudo systemctl stop mosquitto && sudo systemctl disable mosquitto",
+        "Verify: sudo ss -tlnp | grep :1883"
+      ]
+    },
+    "pi": {
+      "description": "Harden MQTT on Raspberry Pi",
+      "steps": [
+        "Same Mosquitto steps as Linux",
+        "Isolate IoT brokers on a separate VLAN when possible",
+        "Never expose 1883 to the internet"
       ]
     }
   },
@@ -471,6 +905,119 @@
       ]
     }
   },
+  "2222": {
+    "service": "SSH-Alt",
+    "dangerous_reason": "Alternate SSH port. Same risk as port 22 — brute force and key theft. Confirm it is your intentional SSH listener.",
+    "windows": {
+      "description": "Disable alternate SSH on Windows",
+      "steps": [
+        "services.msc → stop OpenSSH SSH Server if unused",
+        "Remove portproxy/firewall rules forwarding 2222",
+        "Verify: netstat -ano | findstr :2222"
+      ]
+    },
+    "linux": {
+      "description": "Stop alternate SSH on Linux",
+      "steps": [
+        "Check sshd_config for Port 2222",
+        "Stop ssh if not needed, or change back to 22 behind fail2ban",
+        "Verify: sudo ss -tlnp | grep :2222"
+      ]
+    },
+    "pi": {
+      "description": "Stop alternate SSH on Raspberry Pi",
+      "steps": [
+        "Edit /etc/ssh/sshd_config and remove alternate Port lines if unwanted",
+        "sudo systemctl restart ssh",
+        "Use key-only auth and disable PasswordAuthentication"
+      ]
+    }
+  },
+  "2375": {
+    "service": "Docker",
+    "dangerous_reason": "Unencrypted Docker Engine API. Anyone who can reach it can start privileged containers and often take over the host.",
+    "windows": {
+      "description": "Disable Docker TCP API on Windows",
+      "steps": [
+        "Docker Desktop → Settings → General/Docker Engine: remove hosts tcp://0.0.0.0:2375",
+        "Do not expose Docker over TCP without TLS",
+        "Verify: netstat -ano | findstr :2375"
+      ]
+    },
+    "linux": {
+      "description": "Disable Docker TCP on Linux",
+      "steps": [
+        "Remove -H tcp://0.0.0.0:2375 from systemd docker.service override",
+        "Use unix:///var/run/docker.sock locally only",
+        "sudo systemctl daemon-reload && sudo systemctl restart docker",
+        "Verify: sudo ss -tlnp | grep :2375"
+      ]
+    },
+    "pi": {
+      "description": "Disable Docker TCP on Raspberry Pi",
+      "steps": [
+        "Same as Linux — never leave 2375 open on the LAN",
+        "Prefer SSH + local docker CLI"
+      ]
+    }
+  },
+  "2376": {
+    "service": "Docker-TLS",
+    "dangerous_reason": "Docker API with TLS. Safer than 2375 but still full engine control — restrict to admin hosts and protect client certificates.",
+    "windows": {
+      "description": "Restrict Docker TLS API on Windows",
+      "steps": [
+        "Confirm Docker Desktop/engine TLS settings are intentional",
+        "Firewall 2376 to admin IPs only",
+        "Rotate client certificates if leaked",
+        "Verify: netstat -ano | findstr :2376"
+      ]
+    },
+    "linux": {
+      "description": "Restrict Docker TLS on Linux",
+      "steps": [
+        "Firewall allowlist management IPs for TCP 2376",
+        "Store TLS keys with strict permissions",
+        "Prefer SSH jump access instead of LAN-wide Docker API"
+      ]
+    },
+    "pi": {
+      "description": "Restrict Docker TLS on Raspberry Pi",
+      "steps": [
+        "Avoid LAN-wide Docker API even with TLS on a home Pi",
+        "Use SSH for docker management"
+      ]
+    }
+  },
+  "3000": {
+    "service": "Dev-HTTP",
+    "dangerous_reason": "Common development server port (Node/React). Dev servers often lack auth and expose source maps or admin UIs.",
+    "windows": {
+      "description": "Stop dev servers on Windows",
+      "steps": [
+        "Close the terminal running npm/yarn/vite",
+        "Check Task Manager for node.exe listening on 3000",
+        "Do not bind dev servers to 0.0.0.0 on a shared LAN",
+        "Verify: netstat -ano | findstr :3000"
+      ]
+    },
+    "linux": {
+      "description": "Stop dev servers on Linux",
+      "steps": [
+        "Find process: sudo ss -tlnp | grep :3000",
+        "Kill the node/python process or stop the systemd unit",
+        "Bind to 127.0.0.1 for local development"
+      ]
+    },
+    "pi": {
+      "description": "Stop dev servers on Raspberry Pi",
+      "steps": [
+        "sudo ss -tlnp | grep :3000",
+        "Stop the app service or kill the process",
+        "Use a reverse proxy with auth for anything shared on LAN"
+      ]
+    }
+  },
   "3306": {
     "service": "MySQL/MariaDB",
     "dangerous_reason": "Relational database with sensitive data. Exposed instances are scanned and brute-forced constantly. GDPR and credential databases are common exfiltration targets.",
@@ -533,6 +1080,63 @@
       ]
     }
   },
+  "5000": {
+    "service": "UPnP/Flask",
+    "dangerous_reason": "Often Flask/UPnP related. Unauthenticated web apps or discovery services can leak device control APIs.",
+    "windows": {
+      "description": "Stop listeners on Windows",
+      "steps": [
+        "Identify the process: netstat -ano | findstr :5000",
+        "Stop Flask/Docker/UPnP software you do not need",
+        "Disable UPnP on the router if unwanted"
+      ]
+    },
+    "linux": {
+      "description": "Stop listeners on Linux",
+      "steps": [
+        "sudo ss -tlnp | grep :5000",
+        "Stop the Flask app or Docker publish",
+        "Disable UPnP clients if not required"
+      ]
+    },
+    "pi": {
+      "description": "Stop listeners on Raspberry Pi",
+      "steps": [
+        "sudo ss -tlnp | grep :5000",
+        "Stop the service or container",
+        "Avoid binding personal apps to 0.0.0.0 without a password"
+      ]
+    }
+  },
+  "5001": {
+    "service": "Synology",
+    "dangerous_reason": "Common Synology DSM alternate HTTPS/admin port. Admin panels are high-value targets — use strong MFA and updates.",
+    "windows": {
+      "description": "Secure Synology access from Windows LAN",
+      "steps": [
+        "Update DSM immediately",
+        "Enable 2FA for admin accounts",
+        "Disable QuickConnect if unused; restrict admin to trusted IPs",
+        "Change default ports only as defense-in-depth, not instead of MFA"
+      ]
+    },
+    "linux": {
+      "description": "Secure Synology from Linux admin hosts",
+      "steps": [
+        "Access DSM only over HTTPS",
+        "Create firewall allowlists for admin",
+        "Disable unused packages and SSH if not required"
+      ]
+    },
+    "pi": {
+      "description": "Secure Synology via Pi network controls",
+      "steps": [
+        "Put NAS on a trusted VLAN",
+        "Block WAN access to 5000/5001",
+        "Keep DSM patched"
+      ]
+    }
+  },
   "5432": {
     "service": "PostgreSQL",
     "dangerous_reason": "PostgreSQL database. Should NEVER be exposed to the internet. Automated scans exploit weak passwords and misconfigured pg_hba.conf for full data access.",
@@ -565,6 +1169,62 @@
       ]
     }
   },
+  "5555": {
+    "service": "ADB",
+    "dangerous_reason": "Android Debug Bridge. If reachable on the LAN, attackers can install apps, exfiltrate data, or take shell control of the phone/TV.",
+    "windows": {
+      "description": "Disable ADB on Windows",
+      "steps": [
+        "On the Android device: Developer options → turn off USB/network debugging",
+        "Stop adb server: adb kill-server",
+        "Unplug USB debugging cables",
+        "Verify: netstat -ano | findstr :5555"
+      ]
+    },
+    "linux": {
+      "description": "Disable ADB networking on Linux",
+      "steps": [
+        "adb kill-server",
+        "Disable wireless debugging on the device",
+        "Do not run adb tcpip 5555 on untrusted networks"
+      ]
+    },
+    "pi": {
+      "description": "Disable ADB on Raspberry Pi / Android TV",
+      "steps": [
+        "Turn off Developer mode / ADB on the TV/box",
+        "Forget wireless debugging pairings",
+        "Reboot the device after disabling"
+      ]
+    }
+  },
+  "5672": {
+    "service": "AMQP",
+    "dangerous_reason": "RabbitMQ / message broker port. Unauthenticated brokers allow queue takeover and lateral movement into app backends.",
+    "windows": {
+      "description": "Secure AMQP on Windows",
+      "steps": [
+        "If using RabbitMQ/Docker, require users and strong passwords",
+        "Do not publish 5672 to the whole LAN without need",
+        "Verify: netstat -ano | findstr :5672"
+      ]
+    },
+    "linux": {
+      "description": "Harden AMQP on Linux",
+      "steps": [
+        "Enable RabbitMQ auth; delete guest remote access",
+        "Stop if unused: sudo systemctl stop rabbitmq-server",
+        "Firewall 5672 to app servers only"
+      ]
+    },
+    "pi": {
+      "description": "Stop AMQP on Raspberry Pi if unused",
+      "steps": [
+        "sudo systemctl stop rabbitmq-server && sudo systemctl disable rabbitmq-server",
+        "Prefer managed brokers for production apps"
+      ]
+    }
+  },
   "5900": {
     "service": "VNC (Virtual Network Computing)",
     "dangerous_reason": "Remote desktop without adequate encryption by default on many implementations. Exposed VNC allows screen viewing and keyboard control — common brute-force target.",
@@ -593,6 +1253,34 @@
         "Interface Options → VNC → Disable",
         "Exit raspi-config",
         "Or: sudo systemctl stop vncserver-x11-serviced"
+      ]
+    }
+  },
+  "5901": {
+    "service": "VNC-1",
+    "dangerous_reason": "Additional VNC display. Same risk as 5900 — remote screen control, often weak passwords.",
+    "windows": {
+      "description": "Disable VNC display :1 on Windows",
+      "steps": [
+        "Quit TightVNC/UltraVNC/RealVNC for display 1",
+        "Stop VNC services in services.msc",
+        "Verify: netstat -ano | findstr :5901"
+      ]
+    },
+    "linux": {
+      "description": "Stop VNC :1 on Linux",
+      "steps": [
+        "sudo ss -tlnp | grep :5901",
+        "Stop vncserver / tigervnc units for display :1",
+        "Prefer SSH port-forwarding or remote desktop with strong auth"
+      ]
+    },
+    "pi": {
+      "description": "Stop VNC :1 on Raspberry Pi",
+      "steps": [
+        "sudo systemctl stop vncserver-x11-serviced or wayvnc if unused",
+        "Disable in raspi-config → Interface Options → VNC",
+        "Never use a blank VNC password"
       ]
     }
   },
@@ -628,6 +1316,59 @@
       ]
     }
   },
+  "5985": {
+    "service": "WinRM-HTTP",
+    "dangerous_reason": "Windows Remote Management over HTTP. Powerful remote admin channel — restrict to admin subnets and prefer HTTPS (5986).",
+    "windows": {
+      "description": "Harden WinRM on Windows",
+      "steps": [
+        "Run: winrm quickconfig only if you need it",
+        "Prefer HTTPS listener (5986) with certificates",
+        "Firewall allowlist admin IPs for 5985/5986",
+        "Disable WinRM if unused: Stop-Service WinRM; Set-Service WinRM -StartupType Disabled"
+      ]
+    },
+    "linux": {
+      "description": "Block WinRM from Linux scanners/firewalls",
+      "steps": [
+        "Block TCP 5985 to Windows hosts from guest networks",
+        "Manage Windows only from trusted jump hosts"
+      ]
+    },
+    "pi": {
+      "description": "Isolate WinRM via Pi/router rules",
+      "steps": [
+        "Do not allow IoT VLAN access to 5985/5986",
+        "Keep Windows admin on a trusted segment"
+      ]
+    }
+  },
+  "5986": {
+    "service": "WinRM-HTTPS",
+    "dangerous_reason": "WinRM over HTTPS. Encrypted but still full remote admin — treat as a privileged service.",
+    "windows": {
+      "description": "Harden WinRM HTTPS on Windows",
+      "steps": [
+        "Require domain auth / strong local admin passwords",
+        "Certificate-pin admin clients when possible",
+        "Allowlist source IPs",
+        "Disable if remote management is unused"
+      ]
+    },
+    "linux": {
+      "description": "Restrict WinRM HTTPS from Linux",
+      "steps": [
+        "Firewall 5986 to management hosts only",
+        "Audit successful WinRM logons on Windows Event Log"
+      ]
+    },
+    "pi": {
+      "description": "Network isolation on Pi deployments",
+      "steps": [
+        "Block 5986 from untrusted VLANs at the router/Pi firewall"
+      ]
+    }
+  },
   "6379": {
     "service": "Redis",
     "dangerous_reason": "In-memory cache/database with no authentication by default. Complete data exposure and remote code execution via CONFIG command — used to deploy malware at scale.",
@@ -657,6 +1398,86 @@
         "Run: sudo systemctl disable redis-server",
         "Bind to localhost only if a local app needs Redis",
         "Verify: sudo ss -tlnp | grep :6379"
+      ]
+    }
+  },
+  "8000": {
+    "service": "HTTP-8000",
+    "dangerous_reason": "Alternate web/dev port. Often unauthenticated apps, proxies, or cameras.",
+    "windows": {
+      "description": "Stop service on Windows",
+      "steps": [
+        "netstat -ano | findstr :8000",
+        "Stop the owning process/service",
+        "Do not expose admin UIs without a password"
+      ]
+    },
+    "linux": {
+      "description": "Stop service on Linux",
+      "steps": [
+        "sudo ss -tlnp | grep :8000",
+        "Stop the systemd unit or container",
+        "Bind to localhost for development"
+      ]
+    },
+    "pi": {
+      "description": "Stop service on Raspberry Pi",
+      "steps": [
+        "sudo ss -tlnp | grep :8000",
+        "Stop the app or move behind authenticated reverse proxy"
+      ]
+    }
+  },
+  "8008": {
+    "service": "HTTP-8008",
+    "dangerous_reason": "Alternate HTTP. Common for proxies, Chromecast/Google services, or misbound apps.",
+    "windows": {
+      "description": "Review on Windows",
+      "steps": [
+        "Identify process with netstat -ano | findstr :8008",
+        "Stop unused software",
+        "Block WAN access"
+      ]
+    },
+    "linux": {
+      "description": "Review on Linux",
+      "steps": [
+        "sudo ss -tlnp | grep :8008",
+        "Stop unused services/containers"
+      ]
+    },
+    "pi": {
+      "description": "Review on Raspberry Pi",
+      "steps": [
+        "sudo ss -tlnp | grep :8008",
+        "Stop if not required for a known app"
+      ]
+    }
+  },
+  "8009": {
+    "service": "AJP",
+    "dangerous_reason": "Apache JServ Protocol. Historically abused (Ghostcat). Should not be exposed beyond the app server backend.",
+    "windows": {
+      "description": "Disable AJP on Windows Tomcat",
+      "steps": [
+        "Edit Tomcat server.xml and remove the AJP Connector",
+        "Restart Tomcat",
+        "Verify: netstat -ano | findstr :8009"
+      ]
+    },
+    "linux": {
+      "description": "Disable AJP on Linux Tomcat/Apache",
+      "steps": [
+        "Remove AJP connector from server.xml",
+        "Restart tomcat/httpd",
+        "Verify: sudo ss -tlnp | grep :8009"
+      ]
+    },
+    "pi": {
+      "description": "Disable AJP on Raspberry Pi",
+      "steps": [
+        "Same Tomcat steps",
+        "Never publish 8009 to the LAN if avoidable"
       ]
     }
   },
@@ -691,6 +1512,33 @@
       ]
     }
   },
+  "8081": {
+    "service": "HTTP-8081",
+    "dangerous_reason": "Alternate HTTP admin/proxy port. Frequently used by cameras, reverse proxies, and panels with default credentials.",
+    "windows": {
+      "description": "Stop on Windows",
+      "steps": [
+        "Find listener: netstat -ano | findstr :8081",
+        "Change default passwords or stop the service",
+        "Update firmware/software"
+      ]
+    },
+    "linux": {
+      "description": "Stop on Linux",
+      "steps": [
+        "sudo ss -tlnp | grep :8081",
+        "Stop nginx/apache/app container if unused",
+        "Require auth on any remaining UI"
+      ]
+    },
+    "pi": {
+      "description": "Stop on Raspberry Pi",
+      "steps": [
+        "sudo ss -tlnp | grep :8081",
+        "Stop the service; isolate cameras on IoT VLAN"
+      ]
+    }
+  },
   "8443": {
     "service": "HTTPS Alternate",
     "dangerous_reason": "Alternative HTTPS port. Stop if unintended. If legitimate, restrict with firewall rules and enforce strong authentication on admin interfaces.",
@@ -718,6 +1566,114 @@
         "Run: sudo ss -tlnp | grep :8443",
         "Stop and disable the listening service",
         "Use VPN or local access instead of exposing 8443 to the internet"
+      ]
+    }
+  },
+  "8883": {
+    "service": "MQTTS",
+    "dangerous_reason": "MQTT over TLS. Better than plain MQTT, but still needs authentication and access control lists.",
+    "windows": {
+      "description": "Harden MQTTS on Windows",
+      "steps": [
+        "Require broker auth + ACLs",
+        "Protect TLS private keys",
+        "Firewall to IoT VLAN only"
+      ]
+    },
+    "linux": {
+      "description": "Harden MQTTS on Linux",
+      "steps": [
+        "Configure Mosquitto listener 8883 with certs and password_file",
+        "allow_anonymous false",
+        "Restart mosquitto and verify"
+      ]
+    },
+    "pi": {
+      "description": "Harden MQTTS on Raspberry Pi",
+      "steps": [
+        "Same Mosquitto TLS + auth steps",
+        "Do not expose 8883 to the internet"
+      ]
+    }
+  },
+  "8888": {
+    "service": "HTTP-8888",
+    "dangerous_reason": "Alternate web port used by notebooks, proxies, and admin tools. Often lacks authentication in lab setups.",
+    "windows": {
+      "description": "Stop on Windows",
+      "steps": [
+        "netstat -ano | findstr :8888",
+        "Stop Jupyter/proxy processes",
+        "Add token/password auth if you must keep it"
+      ]
+    },
+    "linux": {
+      "description": "Stop on Linux",
+      "steps": [
+        "sudo ss -tlnp | grep :8888",
+        "Stop jupyter/proxy systemd units",
+        "Bind to 127.0.0.1"
+      ]
+    },
+    "pi": {
+      "description": "Stop on Raspberry Pi",
+      "steps": [
+        "Stop lab services on 8888",
+        "Use SSH tunnels instead of LAN exposure"
+      ]
+    }
+  },
+  "9000": {
+    "service": "Sonar/Portainer",
+    "dangerous_reason": "Often Portainer, SonarQube, or similar admin UIs. Full container/app control if credentials are weak.",
+    "windows": {
+      "description": "Secure on Windows",
+      "steps": [
+        "Change default admin passwords immediately",
+        "Update Portainer/Sonar",
+        "Firewall 9000 to admin PCs only"
+      ]
+    },
+    "linux": {
+      "description": "Secure on Linux",
+      "steps": [
+        "sudo ss -tlnp | grep :9000",
+        "Set strong admin password; enable SSO if available",
+        "Stop container if unused: docker stop portainer"
+      ]
+    },
+    "pi": {
+      "description": "Secure on Raspberry Pi",
+      "steps": [
+        "Do not leave Portainer open to the whole home LAN",
+        "Use strong password + trusted VLAN"
+      ]
+    }
+  },
+  "9090": {
+    "service": "Prometheus/Web",
+    "dangerous_reason": "Prometheus and other admin UIs. Metrics can leak infrastructure detail; UIs may allow config changes.",
+    "windows": {
+      "description": "Secure on Windows",
+      "steps": [
+        "Identify process on 9090",
+        "Add auth proxy or stop if unused",
+        "Block WAN"
+      ]
+    },
+    "linux": {
+      "description": "Secure on Linux",
+      "steps": [
+        "sudo ss -tlnp | grep :9090",
+        "Put Prometheus behind authenticated reverse proxy",
+        "Or stop: sudo systemctl stop prometheus"
+      ]
+    },
+    "pi": {
+      "description": "Secure on Raspberry Pi",
+      "steps": [
+        "Stop unused monitoring UIs",
+        "Never expose Prometheus to the internet without auth"
       ]
     }
   },
@@ -784,6 +1740,144 @@
       ]
     }
   },
+  "9443": {
+    "service": "HTTPS-9443",
+    "dangerous_reason": "Alternate HTTPS admin port (Portainer HTTPS, appliances). Treat as a privileged management endpoint.",
+    "windows": {
+      "description": "Secure on Windows",
+      "steps": [
+        "Confirm owning app",
+        "Strong password + updates",
+        "Allowlist admin IPs"
+      ]
+    },
+    "linux": {
+      "description": "Secure on Linux",
+      "steps": [
+        "sudo ss -tlnp | grep :9443",
+        "Harden TLS and credentials",
+        "Stop container/service if unused"
+      ]
+    },
+    "pi": {
+      "description": "Secure on Raspberry Pi",
+      "steps": [
+        "Restrict 9443 to trusted devices",
+        "Keep appliance firmware updated"
+      ]
+    }
+  },
+  "10000": {
+    "service": "Webmin",
+    "dangerous_reason": "Webmin system administration UI. Full root-equivalent control of the host if compromised.",
+    "windows": {
+      "description": "Remove/secure Webmin on Windows",
+      "steps": [
+        "Webmin is uncommon on Windows — check WSL/VM",
+        "Stop the service and uninstall if not needed"
+      ]
+    },
+    "linux": {
+      "description": "Stop Webmin on Linux",
+      "steps": [
+        "sudo systemctl stop webmin",
+        "sudo systemctl disable webmin",
+        "Or uninstall the webmin package",
+        "If kept: change port, force SSL, restrict by IP, use strong credentials"
+      ]
+    },
+    "pi": {
+      "description": "Stop Webmin on Raspberry Pi",
+      "steps": [
+        "sudo systemctl stop webmin && sudo systemctl disable webmin",
+        "Prefer SSH with keys for Pi administration"
+      ]
+    }
+  },
+  "11211": {
+    "service": "Memcached",
+    "dangerous_reason": "In-memory cache often without authentication. Abused for data exposure and DDoS amplification when reachable.",
+    "windows": {
+      "description": "Stop Memcached on Windows",
+      "steps": [
+        "Stop Docker/Windows service publishing 11211",
+        "Never bind memcached to 0.0.0.0",
+        "Verify: netstat -ano | findstr :11211"
+      ]
+    },
+    "linux": {
+      "description": "Stop Memcached on Linux",
+      "steps": [
+        "sudo systemctl stop memcached",
+        "sudo systemctl disable memcached",
+        "Or set -l 127.0.0.1 in /etc/memcached.conf",
+        "Verify: sudo ss -tlnp | grep :11211"
+      ]
+    },
+    "pi": {
+      "description": "Stop Memcached on Raspberry Pi",
+      "steps": [
+        "sudo systemctl stop memcached && sudo systemctl disable memcached",
+        "Bind to localhost only if you must keep it"
+      ]
+    }
+  },
+  "15672": {
+    "service": "RabbitMQ",
+    "dangerous_reason": "RabbitMQ management UI. Default guest credentials are a common compromise path.",
+    "windows": {
+      "description": "Secure RabbitMQ UI on Windows",
+      "steps": [
+        "Change default users immediately",
+        "Disable guest remote login",
+        "Firewall 15672 to admins only"
+      ]
+    },
+    "linux": {
+      "description": "Secure RabbitMQ UI on Linux",
+      "steps": [
+        "rabbitmqctl delete_user guest (or restrict)",
+        "Create admin user with strong password",
+        "Stop if unused: sudo systemctl stop rabbitmq-server"
+      ]
+    },
+    "pi": {
+      "description": "Secure on Raspberry Pi",
+      "steps": [
+        "Do not expose 15672 on the home LAN without a strong password",
+        "Stop RabbitMQ if unused"
+      ]
+    }
+  },
+  "25565": {
+    "service": "Minecraft",
+    "dangerous_reason": "Minecraft server. Unpatched servers are frequently exploited; also attracts internet scanners when port-forwarded.",
+    "windows": {
+      "description": "Secure Minecraft on Windows",
+      "steps": [
+        "Keep server jar updated",
+        "Set online-mode=true and a strong whitelist",
+        "Avoid WAN port-forward unless necessary",
+        "Verify: netstat -ano | findstr :25565"
+      ]
+    },
+    "linux": {
+      "description": "Secure Minecraft on Linux",
+      "steps": [
+        "Update server software",
+        "Use whitelist/auth plugins",
+        "Firewall to friends' IPs when possible",
+        "Stop: systemctl stop minecraft if unused"
+      ]
+    },
+    "pi": {
+      "description": "Secure Minecraft on Raspberry Pi",
+      "steps": [
+        "Same hardening",
+        "Be aware Pi servers are often outdated — update often or stop the service"
+      ]
+    }
+  },
   "27017": {
     "service": "MongoDB",
     "dangerous_reason": "NoSQL database. Older versions had no authentication by default — thousands of databases were wiped in 2017. Full read/write access if exposed without auth.",
@@ -813,6 +1907,35 @@
         "Run: sudo systemctl disable mongod",
         "Use SQLite for Pi projects unless MongoDB is essential",
         "Verify: sudo ss -tlnp | grep :27017"
+      ]
+    }
+  },
+  "32400": {
+    "service": "Plex",
+    "dangerous_reason": "Plex Media Server. Exposes library metadata and streaming; weak accounts or remote access misconfig can leak media and tokens.",
+    "windows": {
+      "description": "Secure Plex on Windows",
+      "steps": [
+        "Plex settings → Remote Access: disable if unused",
+        "Use a strong Plex account password + 2FA",
+        "Keep Plex updated",
+        "Verify: netstat -ano | findstr :32400"
+      ]
+    },
+    "linux": {
+      "description": "Secure Plex on Linux",
+      "steps": [
+        "Disable remote access if only LAN streaming is needed",
+        "Update plexmediaserver package",
+        "Firewall WAN 32400"
+      ]
+    },
+    "pi": {
+      "description": "Secure Plex on Raspberry Pi",
+      "steps": [
+        "Disable remote access for home-only use",
+        "Keep Plex updated",
+        "Put media servers on a trusted VLAN"
       ]
     }
   },
@@ -846,6 +1969,32 @@
         "Run: sudo ss -tlnp | grep :50070",
         "Stop the Hadoop or Docker service immediately",
         "Do not expose big-data cluster ports to the internet"
+      ]
+    }
+  },
+  "62078": {
+    "service": "iPhone-Sync",
+    "dangerous_reason": "Apple lockdownd / sync related service seen on iOS devices. Usually expected on phones; treat unexpected listeners on non-Apple hosts as suspicious.",
+    "windows": {
+      "description": "Windows guidance",
+      "steps": [
+        "If seen on a PC, identify the process with netstat -ano | findstr :62078",
+        "Uninstall unexpected Apple/mobile sync software",
+        "Otherwise ignore when the device is a known iPhone/iPad"
+      ]
+    },
+    "linux": {
+      "description": "Linux guidance",
+      "steps": [
+        "Confirm the host is an Apple device in inventory",
+        "If a Linux host listens here, investigate the process and stop it"
+      ]
+    },
+    "pi": {
+      "description": "Raspberry Pi / LAN guidance",
+      "steps": [
+        "Expected on iPhones — no action if ownership is confirmed",
+        "Isolate unknown devices that expose unusual high ports"
       ]
     }
   }
