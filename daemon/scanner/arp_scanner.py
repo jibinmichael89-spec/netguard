@@ -72,7 +72,17 @@ def detect_local_subnet() -> str:
     Uses a UDP socket trick to find the primary local IP, then reads the
     netmask from the system routing table (Linux/Pi via `ip` command).
     Falls back to a /24 subnet if detection fails.
+
+    Override with NETGUARD_SCAN_SUBNET (e.g. 192.168.1.0/24) when the Pi
+    has multiple interfaces and auto-detect picks the wrong LAN.
     """
+    override = os.environ.get("NETGUARD_SCAN_SUBNET", "").strip()
+    if override:
+        try:
+            return str(ipaddress.IPv4Network(override, strict=False))
+        except ValueError as exc:
+            print(f"[!] Invalid NETGUARD_SCAN_SUBNET={override!r}: {exc}")
+
     local_ip = _detect_local_ip()
 
     # Try to read the CIDR from the `ip` command (works on Raspberry Pi OS)
