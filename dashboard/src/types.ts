@@ -198,13 +198,15 @@ export interface DnsDeviceSummary {
   source_ip: string;
   query_count: number;
   suspicious_count: number;
-  last_query_at: string;
+  last_query_at: string | null;
   latest_domain: string | null;
   device: DnsDeviceInfo | null;
 }
 
 export interface DnsDevicesResponse {
   count: number;
+  with_dns_count?: number;
+  without_dns_count?: number;
   devices: DnsDeviceSummary[];
 }
 

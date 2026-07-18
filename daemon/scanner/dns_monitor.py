@@ -42,10 +42,24 @@ DB_PATH = resolve_db_path(PROJECT_ROOT)
 DNS_BPF_FILTER = "udp port 53"
 
 # dnsmasq query log (Pi / router deployments)
-DNSMASQ_LOG_PATH = os.environ.get(
-    "DNSMASQ_LOG_PATH",
+# Prefer /var/log/netguard (install.sh / setup-dns-relay.sh), then legacy path.
+_DEFAULT_DNSMASQ_LOG_CANDIDATES = (
+    "/var/log/netguard/dnsmasq.log",
     "/home/netguard/netguard/logs/dnsmasq.log",
 )
+
+
+def _resolve_dnsmasq_log_path() -> str:
+    env_path = os.environ.get("DNSMASQ_LOG_PATH", "").strip()
+    if env_path:
+        return env_path
+    for candidate in _DEFAULT_DNSMASQ_LOG_CANDIDATES:
+        if os.path.exists(candidate):
+            return candidate
+    return _DEFAULT_DNSMASQ_LOG_CANDIDATES[0]
+
+
+DNSMASQ_LOG_PATH = _resolve_dnsmasq_log_path()
 DNSMASQ_LOG_RETRY_SECONDS = 5
 DNSMASQ_DEDUP_WINDOW_SECONDS = 10
 DNSMASQ_TAIL_POLL_SECONDS = 0.2

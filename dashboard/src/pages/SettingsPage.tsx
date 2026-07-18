@@ -1087,17 +1087,19 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {tab === "threat-intel" && threatIntel && (
+      {tab === "threat-intel" && (
         <div className="rounded-xl border border-ng-border bg-ng-card p-6 space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <p className="text-sm text-gray-500">Blocked domains in feed</p>
-              <p className="text-2xl font-bold text-white">{threatIntel.domain_count}</p>
+              <p className="text-2xl font-bold text-white">
+                {threatIntel?.domain_count ?? 0}
+              </p>
             </div>
             <div>
               <p className="text-sm text-gray-500">Last updated</p>
               <p className="text-lg text-gray-300">
-                {threatIntel.last_updated
+                {threatIntel?.last_updated
                   ? new Date(threatIntel.last_updated).toLocaleString()
                   : "Never"}
               </p>
@@ -1113,7 +1115,8 @@ export default function SettingsPage() {
             Update feed now
           </button>
           <p className="text-xs text-gray-500">
-            Pi installs also run a weekly timer. Feed URL is set via NETGUARD_THREAT_FEED_URL on the server.
+            Refreshes the domain list used for DNS warnings. Pi installs also run a weekly timer.
+            Feed URL is set via NETGUARD_THREAT_FEED_URL on the server.
           </p>
         </div>
       )}

@@ -470,9 +470,16 @@ def _fetch_dns_device_summaries(
     conn: sqlite3.Connection,
     *,
     suspicious_only: bool = False,
-    limit: int = 100,
+    include_online: bool = True,
+    limit: int = 500,
 ) -> list[dict]:
-    """Return one DNS summary row per source device."""
+    """
+    Return one DNS summary row per source device.
+
+    When include_online is True (default), also include online inventory devices
+    that have not sent any DNS queries yet so the DNS page covers the whole LAN
+    and makes relay gaps visible.
+    """
     having_sql = (
         " HAVING SUM(CASE WHEN is_suspicious = 1 THEN 1 ELSE 0 END) > 0"
         if suspicious_only
@@ -490,11 +497,9 @@ def _fetch_dns_device_summaries(
         GROUP BY source_ip
         {having_sql}
         ORDER BY last_query_at DESC
-        LIMIT ?
-        """,
-        (limit,),
+        """
     )
-    summaries: list[dict] = []
+    by_ip: dict[str, dict] = {}
     for row in cursor.fetchall():
         source_ip = row["source_ip"]
         latest = conn.execute(
@@ -506,17 +511,56 @@ def _fetch_dns_device_summaries(
             """,
             (source_ip,),
         ).fetchone()
-        summaries.append(
-            {
-                "source_ip": source_ip,
-                "query_count": int(row["query_count"]),
-                "suspicious_count": int(row["suspicious_count"] or 0),
-                "last_query_at": row["last_query_at"],
-                "latest_domain": latest["domain"] if latest else None,
-                "device": _dns_device_info(conn, source_ip),
-            }
+        by_ip[source_ip] = {
+            "source_ip": source_ip,
+            "query_count": int(row["query_count"]),
+            "suspicious_count": int(row["suspicious_count"] or 0),
+            "last_query_at": row["last_query_at"],
+            "latest_domain": latest["domain"] if latest else None,
+            "device": _dns_device_info(conn, source_ip),
+        }
+
+    if include_online and not suspicious_only:
+        cursor.execute(
+            f"""
+            SELECT {DEVICE_SELECT_SQL}
+            FROM devices
+            WHERE status = 'online'
+            ORDER BY last_seen DESC
+            """
         )
-    return summaries
+        for row in cursor.fetchall():
+            device = rows_to_device_dicts([row])[0]
+            source_ip = device.get("ip_address")
+            if not source_ip or source_ip in by_ip:
+                continue
+            by_ip[source_ip] = {
+                "source_ip": source_ip,
+                "query_count": 0,
+                "suspicious_count": 0,
+                "last_query_at": None,
+                "latest_domain": None,
+                "device": {
+                    "id": device["id"],
+                    "ip_address": source_ip,
+                    "mac_address": device.get("mac_address"),
+                    "hostname": device.get("hostname"),
+                    "vendor": device.get("vendor"),
+                    "device_tag": device.get("device_tag"),
+                    "device_category": device.get("device_category"),
+                    "status": device.get("status"),
+                    "is_blocked": device.get("is_blocked"),
+                    "risk_level": device.get("risk_level"),
+                    "known": True,
+                },
+            }
+
+    summaries = list(by_ip.values())
+    with_dns = [s for s in summaries if (s.get("query_count") or 0) > 0]
+    without_dns = [s for s in summaries if (s.get("query_count") or 0) == 0]
+    with_dns.sort(key=lambda item: item.get("last_query_at") or "", reverse=True)
+    without_dns.sort(key=lambda item: item.get("source_ip") or "")
+    return (with_dns + without_dns)[:limit]
 
 
 def _fetch_dns_queries(
@@ -1960,16 +2004,34 @@ def list_dhcp_servers() -> dict:
 
 
 @app.get("/dns/devices")
-def list_dns_devices(suspicious_only: bool = Query(default=False)) -> dict:
+def list_dns_devices(
+    suspicious_only: bool = Query(default=False),
+    include_online: bool = Query(
+        default=True,
+        description="Include online inventory devices even when they have no DNS queries yet",
+    ),
+) -> dict:
     """
-    Return one summary row per device that has DNS activity.
+    Return one summary row per device for the DNS Activity page.
 
+    By default this includes every online device from inventory so operators can
+    see which hosts are being monitored vs which still bypass the DNS relay.
     Use the device detail timeline for full per-device DNS history.
     """
     conn = get_db_connection()
-    devices = _fetch_dns_device_summaries(conn, suspicious_only=suspicious_only)
+    devices = _fetch_dns_device_summaries(
+        conn,
+        suspicious_only=suspicious_only,
+        include_online=include_online,
+    )
+    with_dns = sum(1 for d in devices if (d.get("query_count") or 0) > 0)
     conn.close()
-    return {"count": len(devices), "devices": devices}
+    return {
+        "count": len(devices),
+        "with_dns_count": with_dns,
+        "without_dns_count": max(0, len(devices) - with_dns),
+        "devices": devices,
+    }
 
 
 @app.get("/dns")
