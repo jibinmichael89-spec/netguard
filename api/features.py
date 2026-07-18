@@ -1062,40 +1062,43 @@ def restart_api_service() -> dict:
     if sys.platform == "win32":
         return _restart_api_windows()
 
+    commands: list[list[str]] = []
     restart_script = "/opt/netguard/scripts/restart-api.sh"
-    if os.path.isfile(restart_script):
-        command = ["sudo", "-n", restart_script]
-    else:
-        command = ["sudo", "-n", "/bin/systemctl", "restart", "netguard-api.service"]
+    if os.path.isfile(restart_script) and os.access(restart_script, os.X_OK):
+        commands.append(["sudo", "-n", restart_script])
+    commands.append(["sudo", "-n", "/bin/systemctl", "restart", "netguard-api.service"])
 
-    try:
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Could not restart API: {exc}",
-        ) from exc
+    last_detail = ""
+    for command in commands:
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            last_detail = str(exc)
+            continue
 
-    if result.returncode != 0:
-        detail = (result.stderr or result.stdout or "").strip()
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                detail
-                or "API restart failed. Re-run Pi install to configure passwordless sudo."
-            ),
-        )
+        if result.returncode == 0:
+            return {
+                "success": True,
+                "message": "API restart initiated. The dashboard will reconnect shortly.",
+            }
 
-    return {
-        "success": True,
-        "message": "API restart initiated. The dashboard will reconnect shortly.",
-    }
+        last_detail = (result.stderr or result.stdout or "").strip()
+        if "command not found" in last_detail.lower() or "no such file" in last_detail.lower():
+            continue
+
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            last_detail
+            or "API restart failed. Re-run Pi install to configure passwordless sudo."
+        ),
+    )
 
 
 @router.post("/notifications/test", dependencies=[Depends(verify_api_key)])

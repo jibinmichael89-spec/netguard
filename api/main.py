@@ -863,49 +863,66 @@ def _restart_detector_windows(detector_id: str, win_process: str) -> dict:
 
 
 def _restart_detector_linux(detector_id: str, systemd_unit: str) -> dict:
-    restart_script = "/opt/netguard/scripts/restart-detector.sh"
-    if not os.path.isfile(restart_script):
-        restart_script = os.path.join(PROJECT_ROOT, "scripts", "restart-detector.sh")
-
-    if os.path.isfile(restart_script):
-        command = ["sudo", "-n", restart_script, detector_id]
-    else:
-        command = ["sudo", "-n", "/bin/systemctl", "restart", systemd_unit]
-
-    try:
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Could not restart {_detector_display_name(detector_id)}: {exc}",
-        ) from exc
-
-    if result.returncode != 0:
-        detail = (result.stderr or result.stdout or "").strip()
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                detail
-                or (
-                    f"Restart failed for {_detector_display_name(detector_id)}. "
-                    "Re-run Pi install to configure passwordless sudo."
-                )
-            ),
-        )
-
-    return {
-        "success": True,
-        "detector_id": detector_id,
-        "message": (
-            f"{_detector_display_name(detector_id)} restarted successfully."
+    """Restart a detector via helper script, falling back to systemctl."""
+    candidates = [
+        "/opt/netguard/scripts/restart-detector.sh",
+        os.path.join(PROJECT_ROOT, "scripts", "restart-detector.sh"),
+    ]
+    restart_script = next(
+        (
+            path
+            for path in candidates
+            if os.path.isfile(path) and os.access(path, os.X_OK)
         ),
-    }
+        None,
+    )
+
+    commands: list[list[str]] = []
+    if restart_script:
+        commands.append(["sudo", "-n", restart_script, detector_id])
+    commands.append(["sudo", "-n", "/bin/systemctl", "restart", systemd_unit])
+
+    last_detail = ""
+    for command in commands:
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            last_detail = str(exc)
+            continue
+
+        if result.returncode == 0:
+            return {
+                "success": True,
+                "detector_id": detector_id,
+                "message": (
+                    f"{_detector_display_name(detector_id)} restarted successfully."
+                ),
+            }
+
+        last_detail = (result.stderr or result.stdout or "").strip()
+        # Broken shebang / missing script often shows as "command not found"
+        # even when a path was passed — try the next fallback.
+        if "command not found" in last_detail.lower() or "no such file" in last_detail.lower():
+            continue
+
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            last_detail
+            or (
+                f"Restart failed for {_detector_display_name(detector_id)}. "
+                "Install scripts/restart-detector.sh under /opt/netguard and "
+                "configure passwordless sudo, or allow: "
+                f"sudo systemctl restart {systemd_unit}"
+            )
+        ),
+    )
 
 
 def _restart_detector_service(detector_id: str) -> dict:
