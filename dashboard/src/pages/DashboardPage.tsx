@@ -5,6 +5,7 @@ import {
   UserPlus,
   ShieldAlert,
 } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { apiFetch } from "../api";
 import type {
   Device,
@@ -35,6 +36,13 @@ const FILTER_LABELS: Record<Exclude<DeviceFilterType, null>, string> = {
   dangerous: "Security Findings",
 };
 
+function parseFilterParam(value: string | null): DeviceFilterType {
+  if (value === "online" || value === "new" || value === "dangerous") {
+    return value;
+  }
+  return null;
+}
+
 function filterDevices(
   devices: Device[],
   filterType: DeviceFilterType,
@@ -63,11 +71,12 @@ function unblockedDevices(devices: Device[]): Device[] {
 }
 
 export default function DashboardPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filterType = parseFilterParam(searchParams.get("filter"));
   const [devices, setDevices] = useState<DevicesResponse["devices"]>([]);
   const [riskSummary, setRiskSummary] = useState<RiskSummaryResponse | null>(
     null,
   );
-  const [filterType, setFilterType] = useState<DeviceFilterType>(null);
   const [showBlockedDevices, setShowBlockedDevices] = useState(false);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -117,7 +126,19 @@ export default function DashboardPage() {
   );
 
   const toggleFilter = (type: Exclude<DeviceFilterType, null>) => {
-    setFilterType((current) => (current === type ? null : type));
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        const active = parseFilterParam(next.get("filter"));
+        if (active === type) {
+          next.delete("filter");
+        } else {
+          next.set("filter", type);
+        }
+        return next;
+      },
+      { replace: false },
+    );
   };
 
   const handleTrustToggle = async (device: Device) => {
@@ -227,7 +248,16 @@ export default function DashboardPage() {
           value={activeDevices.length}
           icon={<Monitor className="h-5 w-5" />}
           accent="accent"
-          onClick={() => setFilterType(null)}
+          onClick={() =>
+            setSearchParams(
+              (current) => {
+                const next = new URLSearchParams(current);
+                next.delete("filter");
+                return next;
+              },
+              { replace: false },
+            )
+          }
           active={filterType === null}
         />
         <StatCard
@@ -264,7 +294,16 @@ export default function DashboardPage() {
           </span>
           <button
             type="button"
-            onClick={() => setFilterType(null)}
+            onClick={() =>
+              setSearchParams(
+                (current) => {
+                  const next = new URLSearchParams(current);
+                  next.delete("filter");
+                  return next;
+                },
+                { replace: false },
+              )
+            }
             className="text-sm text-gray-400 transition hover:text-white"
           >
             Clear filter

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Check, ShieldBan, ShieldCheck } from "lucide-react";
+import { useParams } from "react-router-dom";
+import { Check, ShieldBan, ShieldCheck } from "lucide-react";
 import { apiFetch, apiFetchWithTimeout } from "../api";
 import type {
   Device,
@@ -27,6 +27,7 @@ import RiskDetailModal, { PortRiskBadge, RiskBadge } from "../components/RiskDet
 import DeviceTimeline from "../components/DeviceTimeline";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ScannerOffline from "../components/ScannerOffline";
+import BackLink from "../components/BackLink";
 
 function resolvePortRiskLevel(
   port: PortsResponse["ports"][number],
@@ -171,9 +172,7 @@ export default function DeviceDetailPage() {
     return (
       <div className="space-y-4 text-center">
         <p className="text-gray-400">Device {ip} not found.</p>
-        <Link to="/" className="text-ng-accent hover:underline">
-          Back to Dashboard
-        </Link>
+        <BackLink fallbackTo="/" label="Back" />
       </div>
     );
   }
@@ -184,13 +183,7 @@ export default function DeviceDetailPage() {
 
   return (
     <div className="space-y-6">
-      <Link
-        to="/"
-        className="inline-flex items-center gap-1 text-sm text-gray-400 transition hover:text-ng-accent"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to Dashboard
-      </Link>
+      <BackLink fallbackTo="/" label="Back" />
 
       {actionMessage && (
         <div

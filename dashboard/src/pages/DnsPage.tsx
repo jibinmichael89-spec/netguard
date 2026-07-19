@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { ChevronRight, RefreshCw } from "lucide-react";
 import { apiFetch } from "../api";
 import type {
@@ -23,6 +23,13 @@ const FILTER_OPTIONS: { id: DnsFilter; label: string }[] = [
   { id: "warnings", label: "Warnings" },
   { id: "no-dns", label: "No DNS yet" },
 ];
+
+function parseDnsFilter(value: string | null): DnsFilter {
+  if (value === "critical" || value === "warnings" || value === "no-dns") {
+    return value;
+  }
+  return "all";
+}
 
 function DeviceDnsCell({
   sourceIp,
@@ -73,16 +80,32 @@ function DeviceDnsCell({
 
 export default function DnsPage() {
   const { systemType } = useSystemDetection();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filter = parseDnsFilter(searchParams.get("filter"));
   const [devices, setDevices] = useState<DnsDeviceSummary[]>([]);
   const [withDnsCount, setWithDnsCount] = useState(0);
   const [withoutDnsCount, setWithoutDnsCount] = useState(0);
-  const [filter, setFilter] = useState<DnsFilter>("all");
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
   const [threatIntel, setThreatIntel] = useState<ThreatIntelStatusResponse | null>(null);
   const [updatingIntel, setUpdatingIntel] = useState(false);
   const [intelMessage, setIntelMessage] = useState<string>();
   const [intelError, setIntelError] = useState<string>();
+
+  const setFilter = (id: DnsFilter) => {
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (id === "all") {
+          next.delete("filter");
+        } else {
+          next.set("filter", id);
+        }
+        return next;
+      },
+      { replace: false },
+    );
+  };
 
   const fetchDns = useCallback(async (isInitial = false) => {
     if (isInitial) setLoading(true);

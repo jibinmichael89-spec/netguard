@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { apiFetch } from "../api";
 import { DASHBOARD_REFRESH_MS } from "../config";
 import type {
@@ -21,8 +22,13 @@ const TAB_OPTIONS: { id: AlertsTab; label: string }[] = [
   { id: "inbound", label: "Inbound Activity" },
 ];
 
+function parseAlertsTab(value: string | null): AlertsTab {
+  return value === "inbound" ? "inbound" : "security";
+}
+
 export default function AlertsPage() {
-  const [activeTab, setActiveTab] = useState<AlertsTab>("security");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = parseAlertsTab(searchParams.get("tab"));
   const [alerts, setAlerts] = useState<SecurityAlertsResponse["alerts"]>([]);
   const [devices, setDevices] = useState<DevicesResponse["devices"]>([]);
   const [monitoringStatus, setMonitoringStatus] =
@@ -150,7 +156,20 @@ export default function AlertsPage() {
               type="button"
               role="tab"
               aria-selected={active}
-              onClick={() => setActiveTab(id)}
+              onClick={() =>
+                setSearchParams(
+                  (current) => {
+                    const next = new URLSearchParams(current);
+                    if (id === "security") {
+                      next.delete("tab");
+                    } else {
+                      next.set("tab", id);
+                    }
+                    return next;
+                  },
+                  { replace: false },
+                )
+              }
               className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
                 active
                   ? id === "inbound"

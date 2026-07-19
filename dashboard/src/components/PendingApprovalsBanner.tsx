@@ -35,7 +35,7 @@ export default function PendingApprovalsBanner() {
           {pending.slice(0, 3).map((device) => (
             <Link
               key={device.id}
-              to={`/devices/${device.ip_address}`}
+              to={`/device/${device.ip_address}`}
               className="rounded-lg border border-ng-border bg-ng-elevated px-3 py-1.5 text-sm text-ng-accent hover:border-ng-accent/40"
             >
               {device.hostname || device.ip_address}

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { useParams } from "react-router-dom";
 import { apiFetch } from "../api";
 import type { DnsDeviceInfo, DnsQuery } from "../types";
 import { DNS_REFRESH_MS } from "../config";
 import { categorizeDomain } from "../utils/categorize";
 import { formatTimestamp } from "../utils/format";
+import BackLink from "../components/BackLink";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ScannerOffline from "../components/ScannerOffline";
 
@@ -93,13 +93,9 @@ export default function DnsDeviceDetailPage() {
   return (
     <div className="space-y-6">
       <div>
-        <Link
-          to="/dns"
-          className="mb-4 inline-flex items-center gap-2 text-sm text-gray-400 hover:text-ng-accent"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to DNS Activity
-        </Link>
+        <div className="mb-4">
+          <BackLink fallbackTo="/dns" label="Back" />
+        </div>
         <h2 className="text-2xl font-bold text-white">DNS history</h2>
         <p className="mt-1 text-sm text-gray-400">
           DNS lookups only for this device — not the full device dashboard
