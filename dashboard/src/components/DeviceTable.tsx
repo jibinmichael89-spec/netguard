@@ -129,17 +129,18 @@ export default function DeviceTable({
   });
 
   const handleBlockConfirm = async () => {
-    if (!blockModalDevice) return;
+    if (!blockModalDevice || blockModalLoading) return;
+    const device = blockModalDevice;
     setBlockModalLoading(true);
     try {
-      await onBlockToggle(blockModalDevice);
+      await onBlockToggle(device);
       setBlockModalDevice(null);
     } finally {
       setBlockModalLoading(false);
     }
   };
 
-  const blockModalIsBlocked = (blockModalDevice?.is_blocked ?? 0) === 1;
+  const blockModalIsBlocked = Number(blockModalDevice?.is_blocked ?? 0) === 1;
 
   return (
     <>
@@ -210,8 +211,8 @@ export default function DeviceTable({
                   );
                   const unknownVendor =
                     !device.vendor || device.vendor === "Unknown";
-                  const isTrusted = (device.is_trusted ?? 0) === 1;
-                  const isBlocked = (device.is_blocked ?? 0) === 1;
+                  const isTrusted = Number(device.is_trusted ?? 0) === 1;
+                  const isBlocked = Number(device.is_blocked ?? 0) === 1;
 
                   return (
                     <tr

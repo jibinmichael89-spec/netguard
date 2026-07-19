@@ -108,12 +108,12 @@ export default function DeviceDetailPage() {
   };
 
   const handleBlockConfirm = async () => {
-    if (!device) return;
+    if (!device || actionLoading) return;
     setActionLoading(true);
     setActionMessage(null);
     setActionOk(false);
     try {
-      const willBlock = (device.is_blocked ?? 0) !== 1;
+      const willBlock = Number(device.is_blocked ?? 0) !== 1;
       await apiFetch<DeviceBlockResponse>(
         `/devices/id/${device.id}/block`,
         {
@@ -121,15 +121,11 @@ export default function DeviceDetailPage() {
           body: JSON.stringify({ is_blocked: willBlock }),
         },
       );
-      if (willBlock) {
-        const result = await enforceDeviceBlock(device.ip_address);
-        setActionOk(isEnforcementSuccess(result));
-        setActionMessage(formatEnforcementMessage(result));
-      } else {
-        const result = await enforceDeviceUnblock(device.ip_address);
-        setActionOk(isEnforcementSuccess(result));
-        setActionMessage(formatEnforcementMessage(result));
-      }
+      const result = willBlock
+        ? await enforceDeviceBlock(device.ip_address)
+        : await enforceDeviceUnblock(device.ip_address);
+      setActionOk(isEnforcementSuccess(result));
+      setActionMessage(formatEnforcementMessage(result));
       setBlockModalOpen(false);
       await fetchDevice();
     } catch (err) {
@@ -183,8 +179,8 @@ export default function DeviceDetailPage() {
     );
   }
 
-  const isTrusted = (device.is_trusted ?? 0) === 1;
-  const isBlocked = (device.is_blocked ?? 0) === 1;
+  const isTrusted = Number(device.is_trusted ?? 0) === 1;
+  const isBlocked = Number(device.is_blocked ?? 0) === 1;
   const isPending = device.approval_status === "pending";
 
   return (
@@ -438,7 +434,10 @@ export default function DeviceDetailPage() {
         systemType={systemType}
         loading={actionLoading}
         onConfirm={handleBlockConfirm}
-        onOpenChange={setBlockModalOpen}
+        onOpenChange={(open) => {
+          if (!open && actionLoading) return;
+          setBlockModalOpen(open);
+        }}
       />
 
       <RiskDetailModal

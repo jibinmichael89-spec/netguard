@@ -68,7 +68,7 @@ function filterDevices(
 }
 
 function unblockedDevices(devices: Device[]): Device[] {
-  return devices.filter((device) => (device.is_blocked ?? 0) !== 1);
+  return devices.filter((device) => Number(device.is_blocked ?? 0) !== 1);
 }
 
 export default function DashboardPage() {
@@ -171,7 +171,7 @@ export default function DashboardPage() {
     setActionOk(false);
     setActionLoadingId(device.id);
     try {
-      const willBlock = (device.is_blocked ?? 0) !== 1;
+      const willBlock = Number(device.is_blocked ?? 0) !== 1;
       await apiFetch<DeviceBlockResponse>(
         `/devices/id/${device.id}/block`,
         {
@@ -184,6 +184,9 @@ export default function DashboardPage() {
         : await enforceDeviceUnblock(device.ip_address);
       setActionOk(isEnforcementSuccess(result));
       setActionError(formatEnforcementMessage(result));
+      if (willBlock) {
+        setShowBlockedDevices(true);
+      }
       await fetchData(false);
     } catch (error) {
       setActionOk(false);
@@ -222,7 +225,7 @@ export default function DashboardPage() {
     isRecentlyAdded(device.first_seen, NEW_DEVICE_WINDOW_HOURS),
   ).length;
   const blockedCount = devices.filter(
-    (device) => (device.is_blocked ?? 0) === 1,
+    (device) => Number(device.is_blocked ?? 0) === 1,
   ).length;
 
   const criticalCount = riskSummary?.critical_count ?? 0;
