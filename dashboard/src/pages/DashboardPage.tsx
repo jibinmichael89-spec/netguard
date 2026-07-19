@@ -20,6 +20,7 @@ import {
   enforceDeviceBlock,
   enforceDeviceUnblock,
   formatEnforcementMessage,
+  isEnforcementSuccess,
 } from "../utils/enforcement";
 import StatCard from "../components/StatCard";
 import DeviceTable from "../components/DeviceTable";
@@ -84,6 +85,7 @@ export default function DashboardPage() {
   const [errorMessage, setErrorMessage] = useState<string>();
   const [tagModalDevice, setTagModalDevice] = useState<Device | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionOk, setActionOk] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
 
   const fetchData = useCallback(async (isInitial = false) => {
@@ -143,6 +145,7 @@ export default function DashboardPage() {
 
   const handleTrustToggle = async (device: Device) => {
     setActionError(null);
+    setActionOk(false);
     setActionLoadingId(device.id);
     try {
       await apiFetch<DeviceTrustResponse>(
@@ -154,6 +157,7 @@ export default function DashboardPage() {
       );
       await fetchData(false);
     } catch (error) {
+      setActionOk(false);
       setActionError(
         error instanceof Error ? error.message : "Failed to update trust status",
       );
@@ -164,6 +168,7 @@ export default function DashboardPage() {
 
   const handleBlockToggle = async (device: Device) => {
     setActionError(null);
+    setActionOk(false);
     setActionLoadingId(device.id);
     try {
       const willBlock = (device.is_blocked ?? 0) !== 1;
@@ -177,9 +182,11 @@ export default function DashboardPage() {
       const result = willBlock
         ? await enforceDeviceBlock(device.ip_address)
         : await enforceDeviceUnblock(device.ip_address);
+      setActionOk(isEnforcementSuccess(result));
       setActionError(formatEnforcementMessage(result));
       await fetchData(false);
     } catch (error) {
+      setActionOk(false);
       setActionError(
         error instanceof Error ? error.message : "Failed to update block status",
       );
@@ -312,7 +319,13 @@ export default function DashboardPage() {
       )}
 
       {actionError && (
-        <p className="rounded-lg border border-ng-alert/40 bg-ng-alert/10 px-4 py-2 text-sm text-ng-alert">
+        <p
+          className={`rounded-lg border px-4 py-2 text-sm ${
+            actionOk
+              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+              : "border-ng-alert/40 bg-ng-alert/10 text-ng-alert"
+          }`}
+        >
           {actionError}
         </p>
       )}

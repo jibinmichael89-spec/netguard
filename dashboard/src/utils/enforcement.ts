@@ -30,3 +30,7 @@ export function formatEnforcementMessage(result: EnforcementResponse): string {
   }
   return `Blocked in dashboard only — network enforcement failed (${result.method}): ${result.detail}`;
 }
+
+export function isEnforcementSuccess(result: EnforcementResponse): boolean {
+  return result.success === true;
+}

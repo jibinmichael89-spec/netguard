@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -158,6 +159,42 @@ def is_dns_only_router(router_type: str | None) -> bool:
     return bool(router_type) and router_type.lower() in DNS_ONLY_ROUTER_TYPES
 
 
+def _run_quiet(command: list[str]) -> bool:
+    try:
+        result = subprocess.run(
+            command,
+            check=False,
+            timeout=5,
+            capture_output=True,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _network_blocker_active() -> bool:
+    """True when netguard-network-blocker is running or enabled (Pi ARP isolation)."""
+    if sys.platform == "win32":
+        return False
+
+    unit = "netguard-network-blocker.service"
+    for systemctl in ("systemctl", "/bin/systemctl", "/usr/bin/systemctl"):
+        if _run_quiet([systemctl, "is-active", "--quiet", unit]):
+            return True
+        # Enabled-but-restarting still enforces blocked devices after is_blocked=1.
+        if _run_quiet([systemctl, "is-enabled", "--quiet", unit]):
+            return True
+
+    for pgrep in ("pgrep", "/usr/bin/pgrep"):
+        if _run_quiet([pgrep, "-f", "network_blocker.py"]):
+            return True
+
+    # Pi home installs expect ARP enforcement even if systemctl is unavailable
+    # to the API user (e.g. restricted PATH / container quirks).
+    profile = os.environ.get("NETGUARD_PROFILE", "").strip().lower()
+    return profile == "home"
+
+
 def router_type_metadata(router_type: str | None) -> dict[str, str | bool]:
     if not router_type:
         return {
@@ -221,7 +258,7 @@ class RouterManager:
     """
     Coordinate device blocking across available methods.
 
-    Priority: router API (when configured) → DNS block on Pi → visibility flag.
+    Priority: router API (when configured) → DNS block on Pi → ARP network blocker → visibility flag.
     """
 
     def __init__(self, db_path: str) -> None:
@@ -237,20 +274,67 @@ class RouterManager:
         )
         self.router_password = _router_setting(db_path, "router_password")
 
+    def _router_credentials_ready(self) -> bool:
+        if not self.router_type or not self.router_url:
+            return False
+        if self.router_type in ("linksys", "velop"):
+            return bool(self.router_password or self.router_token)
+        if self.router_type == "openwrt":
+            return bool(self.router_password or self.router_token)
+        if self.router_type == "custom":
+            return True
+        return False
+
+    def _arp_isolation_result(self) -> EnforcementResult | None:
+        if not _network_blocker_active():
+            return None
+        return EnforcementResult(
+            method="arp_isolation",
+            success=True,
+            detail="Device blocked via NetGuard network blocker (ARP isolation).",
+        )
+
     def block_device(self, device_ip: str, mac_address: str | None = None) -> EnforcementResult:
         if is_dns_only_router(self.router_type):
             return self._block_dns_only(device_ip)
 
+        router_failure: EnforcementResult | None = None
         if self.router_type and self.router_url:
             result = self._block_via_router(device_ip, mac_address)
             if result.success:
                 self._log_enforcement(device_ip, result)
                 return result
+            router_failure = result
 
         dns_result = self._block_via_dns(device_ip)
         if dns_result.success:
             self._log_enforcement(device_ip, dns_result)
             return dns_result
+
+        arp_result = self._arp_isolation_result()
+        if arp_result is not None:
+            # Dashboard already set is_blocked=1; network blocker will enforce it.
+            if router_failure and self._router_credentials_ready():
+                arp_result = EnforcementResult(
+                    method="arp_isolation",
+                    success=True,
+                    detail=(
+                        "Device blocked via NetGuard network blocker (ARP isolation). "
+                        f"Router API note: {router_failure.detail}"
+                    ),
+                )
+            self._log_enforcement(device_ip, arp_result)
+            return arp_result
+
+        if router_failure and self._router_credentials_ready():
+            return EnforcementResult(
+                method=router_failure.method,
+                success=False,
+                detail=(
+                    f"Router enforcement failed: {router_failure.detail}. "
+                    "Device is marked blocked in NetGuard only."
+                ),
+            )
 
         return EnforcementResult(
             method="visibility_only",
@@ -277,8 +361,17 @@ class RouterManager:
             self._log_enforcement(device_ip, dns_result)
             return dns_result
 
+        if _network_blocker_active():
+            result = EnforcementResult(
+                method="arp_isolation",
+                success=True,
+                detail="Device unblocked in NetGuard; network blocker will release ARP isolation.",
+            )
+            self._log_enforcement(device_ip, result)
+            return result
+
         return EnforcementResult(
-            method="visibility_only",
+            method="database",
             success=True,
             detail="Device unblocked in NetGuard database.",
         )
@@ -356,6 +449,10 @@ class RouterManager:
             )
             self._log_enforcement(device_ip, result)
             return result
+        arp_result = self._arp_isolation_result()
+        if arp_result is not None:
+            self._log_enforcement(device_ip, arp_result)
+            return arp_result
         return EnforcementResult(
             method="dns_fallback",
             success=False,

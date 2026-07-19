@@ -16,6 +16,7 @@ import {
   enforceDeviceBlock,
   enforceDeviceUnblock,
   formatEnforcementMessage,
+  isEnforcementSuccess,
 } from "../utils/enforcement";
 import { useSystemDetection, instructionPlatform } from "../hooks/useSystemDetection";
 import StatusBadge from "../components/StatusBadge";
@@ -51,6 +52,7 @@ export default function DeviceDetailPage() {
   const [riskModalOpen, setRiskModalOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [actionOk, setActionOk] = useState(false);
   const [instructionsPort, setInstructionsPort] = useState<number | null>(null);
 
   const fetchDevice = useCallback(async () => {
@@ -109,6 +111,7 @@ export default function DeviceDetailPage() {
     if (!device) return;
     setActionLoading(true);
     setActionMessage(null);
+    setActionOk(false);
     try {
       const willBlock = (device.is_blocked ?? 0) !== 1;
       await apiFetch<DeviceBlockResponse>(
@@ -120,14 +123,17 @@ export default function DeviceDetailPage() {
       );
       if (willBlock) {
         const result = await enforceDeviceBlock(device.ip_address);
+        setActionOk(isEnforcementSuccess(result));
         setActionMessage(formatEnforcementMessage(result));
       } else {
         const result = await enforceDeviceUnblock(device.ip_address);
+        setActionOk(isEnforcementSuccess(result));
         setActionMessage(formatEnforcementMessage(result));
       }
       setBlockModalOpen(false);
       await fetchDevice();
     } catch (err) {
+      setActionOk(false);
       setActionMessage(err instanceof Error ? err.message : "Block action failed");
     } finally {
       setActionLoading(false);
@@ -188,9 +194,9 @@ export default function DeviceDetailPage() {
       {actionMessage && (
         <div
           className={`rounded-lg border px-4 py-3 text-sm ${
-            actionMessage.includes("failed") || actionMessage.includes("only")
-              ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
-              : "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+            actionOk
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+              : "border-amber-500/30 bg-amber-500/10 text-amber-200"
           }`}
         >
           {actionMessage}
