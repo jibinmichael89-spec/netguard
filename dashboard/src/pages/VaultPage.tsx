@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Copy,
+  Eye,
+  EyeOff,
   KeyRound,
   Lock,
   Plus,
@@ -111,6 +113,7 @@ export default function VaultPage() {
   const [editingCredentialId, setEditingCredentialId] = useState<number | null>(null);
   const [credentialForm, setCredentialForm] = useState<CredentialForm>(EMPTY_FORM);
   const [credentialSaving, setCredentialSaving] = useState(false);
+  const [showCredentialPassword, setShowCredentialPassword] = useState(false);
 
   const [passwordCheck, setPasswordCheck] = useState<VaultPasswordCheckResponse | null>(null);
   const [passwordChecking, setPasswordChecking] = useState(false);
@@ -433,6 +436,7 @@ export default function VaultPage() {
     setPasswordCheck(null);
     setRiskAcknowledged(false);
     setShowGenerator(false);
+    setShowCredentialPassword(false);
     setShowCredentialForm(true);
   };
 
@@ -454,6 +458,7 @@ export default function VaultPage() {
       setPasswordCheck(null);
       setRiskAcknowledged(false);
       setShowGenerator(false);
+      setShowCredentialPassword(false);
       setShowCredentialForm(true);
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Failed to load credential");
@@ -1043,14 +1048,32 @@ export default function VaultPage() {
                       Generate
                     </button>
                   </div>
-                  <input
-                    type="password"
-                    value={credentialForm.password}
-                    onChange={(e) => setCredentialForm({ ...credentialForm, password: e.target.value })}
-                    className="w-full rounded-lg border border-ng-border bg-ng-elevated px-3 py-2 text-white"
-                    required
-                    autoComplete="new-password"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showCredentialPassword ? "text" : "password"}
+                      value={credentialForm.password}
+                      onChange={(e) => setCredentialForm({ ...credentialForm, password: e.target.value })}
+                      className="w-full rounded-lg border border-ng-border bg-ng-elevated px-3 py-2 pr-10 text-white"
+                      required
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCredentialPassword((prev) => !prev);
+                        touchActivity();
+                      }}
+                      className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-white"
+                      aria-label={showCredentialPassword ? "Hide password" : "Show password"}
+                      title={showCredentialPassword ? "Hide password" : "Show password"}
+                    >
+                      {showCredentialPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
                   {editingCredentialId !== null && credentialForm.password && (
                     <button
                       type="button"
