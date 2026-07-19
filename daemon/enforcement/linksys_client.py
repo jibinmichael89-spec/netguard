@@ -4,9 +4,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+import ssl
 import urllib.error
 import urllib.request
 from typing import Any
+
+
+def _insecure_ssl_context() -> ssl.SSLContext:
+    """Local routers almost always use self-signed HTTPS certificates."""
+    context = ssl.create_default_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    return context
 
 
 class LinksysClient:
@@ -17,6 +26,7 @@ class LinksysClient:
         self.password = password
         self.username = username
         self._auth_token: str | None = None
+        self._ssl_context = _insecure_ssl_context()
 
     def _jnap(self, action: str, body: dict | None = None) -> dict[str, Any]:
         headers = {
@@ -32,7 +42,11 @@ class LinksysClient:
             headers=headers,
             method="POST",
         )
-        with urllib.request.urlopen(request, timeout=20) as response:
+        with urllib.request.urlopen(
+            request,
+            timeout=20,
+            context=self._ssl_context,
+        ) as response:
             return json.loads(response.read().decode("utf-8"))
 
     @staticmethod

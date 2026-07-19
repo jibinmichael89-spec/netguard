@@ -3,9 +3,18 @@
 from __future__ import annotations
 
 import json
+import ssl
 import urllib.error
 import urllib.request
 from typing import Any
+
+
+def _insecure_ssl_context() -> ssl.SSLContext:
+    """Local routers almost always use self-signed HTTPS certificates."""
+    context = ssl.create_default_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    return context
 
 
 class OpenWrtClient:
@@ -17,6 +26,7 @@ class OpenWrtClient:
         self.password = password
         self.session_id = ""
         self._request_id = 0
+        self._ssl_context = _insecure_ssl_context()
 
     def _ubus(self, namespace: str, method: str, params: dict | None = None, session: str | None = None) -> Any:
         self._request_id += 1
@@ -34,7 +44,11 @@ class OpenWrtClient:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(request, timeout=20) as response:
+        with urllib.request.urlopen(
+            request,
+            timeout=20,
+            context=self._ssl_context,
+        ) as response:
             data = json.loads(response.read().decode("utf-8"))
         if "error" in data:
             raise RuntimeError(str(data["error"]))
